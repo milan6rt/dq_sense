@@ -8,14 +8,57 @@ import uuid
 from abc import ABC, abstractmethod
 import random
 
-from models import AgentStatus, AgentStatusEnum, AgentType, AgentActivity, AgentLog
+# Simple enum classes since models.py might not have these
+class AgentStatusEnum:
+    inactive = "inactive"
+    starting = "starting"
+    active = "active"
+    stopping = "stopping"
+    error = "error"
+
+class AgentType:
+    profiling = "profiling"
+    validation = "validation"
+    monitoring = "monitoring"
+    lineage = "lineage"
+
+class AgentStatus:
+    def __init__(self, id, name, type, status, last_run=None, tasks_completed=0, tasks_failed=0, uptime=None, error_message=None):
+        self.id = id
+        self.name = name
+        self.type = type
+        self.status = status
+        self.last_run = last_run
+        self.tasks_completed = tasks_completed
+        self.tasks_failed = tasks_failed
+        self.uptime = uptime
+        self.error_message = error_message
+
+class AgentActivity:
+    def __init__(self, id, agent_id, agent_name, activity, status, timestamp, details=None):
+        self.id = id
+        self.agent_id = agent_id
+        self.agent_name = agent_name
+        self.activity = activity
+        self.status = status
+        self.timestamp = timestamp
+        self.details = details
+
+class AgentLog:
+    def __init__(self, id, agent_id, level, message, timestamp, details=None):
+        self.id = id
+        self.agent_id = agent_id
+        self.level = level
+        self.message = message
+        self.timestamp = timestamp
+        self.details = details
 
 logger = logging.getLogger(__name__)
 
 class BaseAgent(ABC):
     """Base class for all AI agents"""
     
-    def __init__(self, agent_id: str, name: str, agent_type: AgentType):
+    def __init__(self, agent_id: str, name: str, agent_type: str):
         self.agent_id = agent_id
         self.name = name
         self.agent_type = agent_type
@@ -258,4 +301,333 @@ class QualityValidatorAgent(BaseAgent):
             issues_found = [
                 {
                     "issue_type": random.choice(["Missing Values", "Data Drift", "Duplicate Records", "Format Violations"]),
-                    "severity":
+                    "severity": random.choice(["high", "medium", "low"]),
+                    "description": "Quality issue detected during validation",
+                    "affected_records": random.randint(1, 1000),
+                    "detected_at": datetime.now().isoformat()
+                }
+            ]
+        
+        validation_results = {
+            "table_id": table_id,
+            "validation_passed": len(issues_found) == 0,
+            "issues_found": issues_found,
+            "quality_score": round(random.uniform(80, 100), 1),
+            "validated_at": datetime.now().isoformat()
+        }
+        
+        status = "success" if validation_results["validation_passed"] else "warning"
+        await self._log_activity(f"Validation completed for table {table_id}", status, validation_results)
+        
+        return validation_results
+    
+    async def _load_validation_rules(self):
+        """Load validation rules"""
+        self.validation_rules = [
+            {"id": 1, "name": "Null Check", "type": "null_validation"},
+            {"id": 2, "name": "Format Check", "type": "format_validation"},
+            {"id": 3, "name": "Range Check", "type": "range_validation"}
+        ]
+        await self._log_activity(f"Loaded {len(self.validation_rules)} validation rules")
+
+class LineageTrackerAgent(BaseAgent):
+    """Agent for tracking data lineage"""
+    
+    def __init__(self):
+        super().__init__(
+            agent_id="lineage_tracker",
+            name="Lineage Tracker",
+            agent_type=AgentType.lineage
+        )
+        self.lineage_graph = {}
+    
+    async def _initialize(self):
+        """Initialize the lineage tracker agent"""
+        await self._log_activity("Initializing lineage tracker agent")
+    
+    async def _cleanup(self):
+        """Cleanup lineage tracker resources"""
+        await self._log_activity("Cleaning up lineage tracker agent")
+    
+    async def _execute_task(self, task_data: Dict[str, Any]) -> Dict[str, Any]:
+        """Execute lineage tracking task"""
+        source_table = task_data.get("source_table")
+        target_table = task_data.get("target_table")
+        
+        if not source_table or not target_table:
+            raise ValueError("Both source_table and target_table are required for lineage tracking")
+        
+        await self._log_activity(f"Tracking lineage from {source_table} to {target_table}")
+        
+        # Simulate lineage tracking work
+        await asyncio.sleep(random.uniform(1, 2))
+        
+        # Generate mock lineage results
+        lineage_results = {
+            "source_table": source_table,
+            "target_table": target_table,
+            "transformation_type": random.choice(["ETL", "View", "Aggregation", "Join"]),
+            "confidence_score": round(random.uniform(0.8, 1.0), 2),
+            "tracked_at": datetime.now().isoformat()
+        }
+        
+        await self._log_activity(f"Lineage tracking completed", "success", lineage_results)
+        
+        return lineage_results
+
+class AnomalyDetectorAgent(BaseAgent):
+    """Agent for detecting data anomalies"""
+    
+    def __init__(self):
+        super().__init__(
+            agent_id="anomaly_detector",
+            name="Anomaly Detector",
+            agent_type=AgentType.monitoring
+        )
+        self.baseline_metrics = {}
+    
+    async def _initialize(self):
+        """Initialize the anomaly detector agent"""
+        await self._log_activity("Initializing anomaly detector agent")
+        await self._load_baseline_metrics()
+    
+    async def _cleanup(self):
+        """Cleanup anomaly detector resources"""
+        await self._log_activity("Cleaning up anomaly detector agent")
+    
+    async def _execute_task(self, task_data: Dict[str, Any]) -> Dict[str, Any]:
+        """Execute anomaly detection task"""
+        table_id = task_data.get("table_id")
+        metric_type = task_data.get("metric_type", "record_count")
+        
+        if not table_id:
+            raise ValueError("table_id is required for anomaly detection")
+        
+        await self._log_activity(f"Detecting anomalies in table {table_id}")
+        
+        # Simulate anomaly detection work
+        await asyncio.sleep(random.uniform(1, 3))
+        
+        # Generate mock anomaly detection results
+        anomaly_detected = random.random() < 0.2  # 20% chance
+        anomaly_results = {
+            "table_id": table_id,
+            "metric_type": metric_type,
+            "anomaly_detected": anomaly_detected,
+            "anomaly_score": round(random.uniform(0, 1), 3),
+            "threshold": 0.8,
+            "current_value": random.randint(1000, 10000),
+            "expected_range": [800, 12000],
+            "detected_at": datetime.now().isoformat()
+        }
+        
+        if anomaly_detected:
+            anomaly_results["anomaly_type"] = random.choice(["Spike", "Drop", "Drift", "Missing Data"])
+            anomaly_results["severity"] = random.choice(["high", "medium", "low"])
+        
+        status = "warning" if anomaly_detected else "success"
+        await self._log_activity(f"Anomaly detection completed for table {table_id}", status, anomaly_results)
+        
+        return anomaly_results
+    
+    async def _load_baseline_metrics(self):
+        """Load baseline metrics for anomaly detection"""
+        # Simulate loading baseline metrics
+        self.baseline_metrics = {
+            "record_counts": {"avg": 50000, "std": 5000},
+            "null_percentages": {"avg": 2.5, "std": 1.0}
+        }
+        await self._log_activity("Loaded baseline metrics for anomaly detection")
+
+class AgentOrchestrator:
+    """Orchestrator for managing multiple agents"""
+    
+    def __init__(self):
+        self.agents: Dict[str, BaseAgent] = {}
+        self.task_queue = asyncio.Queue()
+        self.running = False
+        self.orchestrator_task = None
+        
+        # Initialize agents
+        self._initialize_agents()
+    
+    def _initialize_agents(self):
+        """Initialize all available agents"""
+        self.agents = {
+            "data_profiler": DataProfilerAgent(),
+            "quality_validator": QualityValidatorAgent(),
+            "lineage_tracker": LineageTrackerAgent(),
+            "anomaly_detector": AnomalyDetectorAgent()
+        }
+        logger.info(f"Initialized {len(self.agents)} agents")
+    
+    async def start_agents(self):
+        """Start all agents"""
+        for agent_id, agent in self.agents.items():
+            await agent.start()
+        await self.start_orchestrator()
+        logger.info("All agents started")
+    
+    async def stop_agents(self):
+        """Stop all agents"""
+        await self.stop_orchestrator()
+        logger.info("All agents stopped")
+    
+    async def start_orchestrator(self):
+        """Start the orchestrator"""
+        self.running = True
+        self.orchestrator_task = asyncio.create_task(self._orchestrator_loop())
+        logger.info("Agent orchestrator started")
+    
+    async def stop_orchestrator(self):
+        """Stop the orchestrator"""
+        self.running = False
+        if self.orchestrator_task:
+            self.orchestrator_task.cancel()
+            try:
+                await self.orchestrator_task
+            except asyncio.CancelledError:
+                pass
+        
+        # Stop all agents
+        for agent in self.agents.values():
+            if agent.status == AgentStatusEnum.active:
+                await agent.stop()
+        
+        logger.info("Agent orchestrator stopped")
+    
+    async def start_agent(self, agent_id: str) -> bool:
+        """Start a specific agent"""
+        if agent_id not in self.agents:
+            logger.error(f"Agent {agent_id} not found")
+            return False
+        
+        agent = self.agents[agent_id]
+        await agent.start()
+        return agent.status == AgentStatusEnum.active
+    
+    async def stop_agent(self, agent_id: str) -> bool:
+        """Stop a specific agent"""
+        if agent_id not in self.agents:
+            logger.error(f"Agent {agent_id} not found")
+            return False
+        
+        agent = self.agents[agent_id]
+        await agent.stop()
+        return agent.status == AgentStatusEnum.inactive
+    
+    def get_agent_status(self, agent_id: str = None) -> List[AgentStatus]:
+        """Get status of agents"""
+        if agent_id:
+            if agent_id in self.agents:
+                return [self.agents[agent_id].get_status()]
+            else:
+                return []
+        
+        # Return all agent statuses as list
+        return [agent.get_status() for agent in self.agents.values()]
+    
+    def get_recent_activity(self, limit: int = 20) -> List[AgentActivity]:
+        """Get recent agent activities"""
+        all_activities = []
+        for agent in self.agents.values():
+            all_activities.extend(agent.activity_log)
+        
+        # Sort by timestamp and return most recent
+        all_activities.sort(key=lambda x: x.timestamp, reverse=True)
+        return all_activities[:limit]
+    
+    def get_execution_logs(self, limit: int = 100) -> List[AgentLog]:
+        """Get agent execution logs"""
+        all_logs = []
+        for agent in self.agents.values():
+            all_logs.extend(agent.execution_log)
+        
+        # Sort by timestamp and return most recent
+        all_logs.sort(key=lambda x: x.timestamp, reverse=True)
+        return all_logs[:limit]
+    
+    async def start_connection_profiling(self, connection_id: int):
+        """Start profiling for a new connection"""
+        task_data = {
+            "action": "profile_connection",
+            "connection_id": connection_id
+        }
+        await self.submit_task("data_profiler", task_data)
+    
+    async def profile_table(self, table_id: int):
+        """Profile a specific table"""
+        task_data = {
+            "action": "profile_table", 
+            "table_id": table_id
+        }
+        await self.submit_task("data_profiler", task_data)
+    
+    async def run_quality_check(self, table_id: int):
+        """Run quality check for a table"""
+        task_data = {
+            "action": "quality_check",
+            "table_id": table_id
+        }
+        await self.submit_task("quality_validator", task_data)
+    
+    async def run_all_quality_checks(self):
+        """Run quality checks for all tables"""
+        task_data = {
+            "action": "quality_check_all"
+        }
+        await self.submit_task("quality_validator", task_data)
+    
+    async def submit_task(self, agent_id: str, task_data: Dict[str, Any]) -> str:
+        """Submit a task to a specific agent"""
+        if agent_id not in self.agents:
+            raise ValueError(f"Agent {agent_id} not found")
+        
+        task_id = str(uuid.uuid4())
+        task = {
+            "task_id": task_id,
+            "agent_id": agent_id,
+            "task_data": task_data,
+            "submitted_at": datetime.now()
+        }
+        
+        await self.task_queue.put(task)
+        logger.info(f"Task {task_id} submitted to agent {agent_id}")
+        return task_id
+    
+    async def _orchestrator_loop(self):
+        """Main orchestrator loop"""
+        while self.running:
+            try:
+                # Process task queue
+                if not self.task_queue.empty():
+                    task = await self.task_queue.get()
+                    await self._process_task(task)
+                
+                await asyncio.sleep(1)
+            except Exception as e:
+                logger.error(f"Orchestrator error: {e}")
+                await asyncio.sleep(5)
+    
+    async def _process_task(self, task: Dict[str, Any]):
+        """Process a task"""
+        try:
+            agent_id = task["agent_id"]
+            agent = self.agents[agent_id]
+            
+            if agent.status != AgentStatusEnum.active:
+                logger.warning(f"Agent {agent_id} is not active, skipping task {task['task_id']}")
+                return
+            
+            result = await agent.execute_task(task["task_data"])
+            logger.info(f"Task {task['task_id']} completed with status {result['status']}")
+            
+        except Exception as e:
+            logger.error(f"Error processing task {task['task_id']}: {e}")
+
+# Global orchestrator instance
+agent_orchestrator = AgentOrchestrator()
+
+async def get_orchestrator():
+    """Dependency function for FastAPI"""
+    return agent_orchestrator

@@ -8,7 +8,7 @@ from datetime import datetime
 from typing import List, Dict, Any, Optional
 import uvicorn
 
-from backend.database import DatabaseManager, get_db
+from database import DatabaseManager, get_db, init_db
 from agents import AgentOrchestrator
 from models import *
 
@@ -25,7 +25,7 @@ app = FastAPI(
 # CORS middleware for frontend communication
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000", "http://127.0.0.1:3000"],
+    allow_origins=["http://localhost:3000", "http://127.0.0.1:3000", "http://localhost:3001", "http://127.0.0.1:3001"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -38,14 +38,26 @@ agent_orchestrator = AgentOrchestrator()
 async def startup_event():
     """Initialize the application on startup"""
     logger.info("Starting DataIQ Platform API...")
+    await init_db()
     await agent_orchestrator.start_agents()
-    logger.info("All agents initialized successfully")
+    logger.info("All systems initialized successfully")
 
 @app.on_event("shutdown")
 async def shutdown_event():
     """Cleanup on shutdown"""
     logger.info("Shutting down DataIQ Platform API...")
     await agent_orchestrator.stop_agents()
+
+# Root endpoint
+@app.get("/")
+async def root():
+    return {
+        "message": "DataIQ Platform API", 
+        "version": "1.0.0",
+        "status": "running",
+        "docs": "/docs",
+        "health": "/health"
+    }
 
 # Health Check
 @app.get("/health")

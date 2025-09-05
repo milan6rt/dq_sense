@@ -1,7 +1,8 @@
 # config.py - Configuration Management
 import os
 from typing import List, Optional
-from pydantic import BaseSettings, Field
+from pydantic import Field
+from pydantic_settings import BaseSettings
 from functools import lru_cache
 
 class Settings(BaseSettings):
@@ -17,7 +18,7 @@ class Settings(BaseSettings):
     
     # CORS Settings
     cors_origins: List[str] = Field(
-        default=["http://localhost:3000", "http://127.0.0.1:3000"], 
+        default=["http://localhost:3000", "http://127.0.0.1:3000", "http://localhost:3001", "http://127.0.0.1:3001"], 
         env="CORS_ORIGINS"
     )
     cors_credentials: bool = Field(default=True, env="CORS_CREDENTIALS")

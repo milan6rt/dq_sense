@@ -74,18 +74,141 @@ const DataIntelligencePlatform = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedTable, setSelectedTable] = useState(null);
   const [agentLogs, setAgentLogs] = useState([]);
+  
+  // Real API data state
+  const [connections, setConnections] = useState([]);
+  const [agents, setAgents] = useState([]);
+  const [dashboardMetrics, setDashboardMetrics] = useState(null);
+  const [loading, setLoading] = useState(true);
+  
+  // Form state for new connection
+  const [showConnectionForm, setShowConnectionForm] = useState(false);
+  const [connectionForm, setConnectionForm] = useState({
+    name: '',
+    host: 'localhost',
+    port: '5432',
+    database: '',
+    username: '',
+    password: '',
+    connection_type: 'postgresql'
+  });
+  const [formLoading, setFormLoading] = useState(false);
+  const [formError, setFormError] = useState('');
+
+  // API base URL
+  const API_BASE = 'http://localhost:8000/api';
+
+  // Fetch data from backend API
+  const fetchData = async () => {
+    try {
+      setLoading(true);
+      
+      // Fetch connections
+      const connectionsResponse = await fetch(`${API_BASE}/connections`);
+      if (connectionsResponse.ok) {
+        const connectionsData = await connectionsResponse.json();
+        setConnections(connectionsData);
+      }
+
+      // Fetch agents
+      const agentsResponse = await fetch(`${API_BASE}/agents`);
+      if (agentsResponse.ok) {
+        const agentsData = await agentsResponse.json();
+        setAgents(agentsData);
+      }
+
+      // Fetch dashboard metrics
+      const metricsResponse = await fetch(`${API_BASE}/dashboard/metrics`);
+      if (metricsResponse.ok) {
+        const metricsData = await metricsResponse.json();
+        setDashboardMetrics(metricsData);
+      }
+
+    } catch (error) {
+      console.error('Error fetching data:', error);
+      // Fallback to mock data if API fails
+      setConnections(mockConnections);
+      setAgents(mockAgents);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Handle form input changes
+  const handleFormChange = (field, value) => {
+    setConnectionForm(prev => ({
+      ...prev,
+      [field]: value
+    }));
+    setFormError(''); // Clear error when user starts typing
+  };
+
+  // Handle form submission
+  const handleSubmitConnection = async (e) => {
+    e.preventDefault();
+    
+    // Basic validation
+    if (!connectionForm.name || !connectionForm.database || !connectionForm.username) {
+      setFormError('Please fill in all required fields (Name, Database, Username)');
+      return;
+    }
+
+    try {
+      setFormLoading(true);
+      setFormError('');
+
+      const response = await fetch(`${API_BASE}/connections`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(connectionForm)
+      });
+
+      if (response.ok) {
+        // Success - refresh connections and reset form
+        await fetchData();
+        setConnectionForm({
+          name: '',
+          host: 'localhost',
+          port: '5432',
+          database: '',
+          username: '',
+          password: '',
+          connection_type: 'postgresql'
+        });
+        setShowConnectionForm(false);
+      } else {
+        const errorData = await response.json();
+        setFormError(errorData.detail || 'Failed to create connection');
+      }
+    } catch (error) {
+      setFormError('Network error. Please check if the backend is running.');
+    } finally {
+      setFormLoading(false);
+    }
+  };
+
+  // Initial data fetch
+  useEffect(() => {
+    fetchData();
+    
+    // Refresh data every 30 seconds
+    const interval = setInterval(fetchData, 30000);
+    return () => clearInterval(interval);
+  }, []);
 
   // Simulate agent activity
   useEffect(() => {
     const interval = setInterval(() => {
-      const agents = ['Data Profiler', 'Quality Validator', 'Lineage Tracker'];
+      const agentNames = ['Data Profiler', 'Quality Validator', 'Lineage Tracker'];
       const activities = ['Profiling table', 'Validating data', 'Tracking lineage', 'Detecting anomalies'];
       
       setAgentLogs(prev => [
         ...prev.slice(-9),
         {
           id: Date.now(),
-          agent: agents[Math.floor(Math.random() * agents.length)],
+          agent: agentNames[Math.floor(Math.random() * agentNames.length)],
           activity: activities[Math.floor(Math.random() * activities.length)],
           timestamp: new Date().toLocaleTimeString()
         }
@@ -185,8 +308,8 @@ const DataIntelligencePlatform = () => {
           <div className="flex items-center justify-between">
             <div>
               <p className="text-slate-600 text-sm">Data Sources</p>
-              <p className="text-2xl font-bold text-slate-800">{mockConnections.length}</p>
-              <p className="text-green-600 text-sm">↑ 2 connected</p>
+              <p className="text-2xl font-bold text-slate-800">{connections.length}</p>
+              <p className="text-green-600 text-sm">↑ {connections.filter(c => c.status === 'connected').length} connected</p>
             </div>
             <Database className="w-10 h-10 text-blue-500" />
           </div>
@@ -941,21 +1064,36 @@ const DataIntelligencePlatform = () => {
     <div className="p-6 space-y-6">
       <div className="flex items-center justify-between">
         <h2 className="text-2xl font-bold text-slate-800">Data Connections</h2>
-        <button className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center space-x-2">
+        <button 
+          onClick={() => setShowConnectionForm(!showConnectionForm)}
+          className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center space-x-2"
+        >
           <Plus className="w-4 h-4" />
-          <span>New Connection</span>
+          <span>{showConnectionForm ? 'Cancel' : 'New Connection'}</span>
         </button>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {mockConnections.map(conn => (
-          <div key={conn.id} className="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
+        {loading ? (
+          <div className="col-span-full text-center py-8">
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto"></div>
+            <p className="text-slate-600 mt-2">Loading connections...</p>
+          </div>
+        ) : connections.length === 0 ? (
+          <div className="col-span-full text-center py-8">
+            <Database className="w-12 h-12 text-slate-400 mx-auto mb-4" />
+            <p className="text-slate-600">No database connections found</p>
+            <p className="text-slate-500 text-sm">Add a connection to get started</p>
+          </div>
+        ) : (
+          connections.map(conn => (
+            <div key={conn.id} className="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
             <div className="flex items-center justify-between mb-4">
               <div className="flex items-center space-x-3">
                 <Database className="w-8 h-8 text-blue-500" />
                 <div>
                   <h3 className="font-semibold text-slate-800">{conn.name}</h3>
-                  <p className="text-sm text-slate-600">{conn.type}</p>
+                  <p className="text-sm text-slate-600">{conn.connection_type}</p>
                 </div>
               </div>
               <div className={`w-3 h-3 rounded-full ${conn.status === 'connected' ? 'bg-green-500' : 'bg-red-500'}`}></div>
@@ -963,8 +1101,12 @@ const DataIntelligencePlatform = () => {
             
             <div className="space-y-2">
               <div className="flex justify-between">
+                <span className="text-slate-600">Database:</span>
+                <span className="text-sm">{conn.database}</span>
+              </div>
+              <div className="flex justify-between">
                 <span className="text-slate-600">Host:</span>
-                <span className="text-sm">{conn.host}</span>
+                <span className="text-sm">{conn.host}:{conn.port}</span>
               </div>
               <div className="flex justify-between">
                 <span className="text-slate-600">Status:</span>
@@ -973,8 +1115,8 @@ const DataIntelligencePlatform = () => {
                 </span>
               </div>
               <div className="flex justify-between">
-                <span className="text-slate-600">Last Sync:</span>
-                <span className="text-sm">{conn.lastSync}</span>
+                <span className="text-slate-600">Created:</span>
+                <span className="text-sm">{new Date(conn.created_at).toLocaleDateString()}</span>
               </div>
             </div>
             
@@ -986,54 +1128,89 @@ const DataIntelligencePlatform = () => {
                 Configure
               </button>
             </div>
-          </div>
-        ))}
+            </div>
+          ))
+        )}
       </div>
 
       {/* Connection Form */}
-      <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
-        <h3 className="text-lg font-semibold text-slate-800 mb-4">Add PostgreSQL Connection</h3>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <input
-            type="text"
-            placeholder="Connection Name"
-            className="px-4 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-          />
-          <input
-            type="text"
-            placeholder="Host"
-            className="px-4 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-          />
-          <input
-            type="text"
-            placeholder="Port"
-            className="px-4 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-          />
-          <input
-            type="text"
-            placeholder="Database Name"
-            className="px-4 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-          />
-          <input
-            type="text"
-            placeholder="Username"
-            className="px-4 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-          />
-          <input
-            type="password"
-            placeholder="Password"
-            className="px-4 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-          />
+      {showConnectionForm && (
+        <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
+          <h3 className="text-lg font-semibold text-slate-800 mb-4">Add PostgreSQL Connection</h3>
+          
+          {formError && (
+            <div className="mb-4 p-3 bg-red-100 border border-red-200 text-red-700 rounded-lg">
+              {formError}
+            </div>
+          )}
+          
+          <form onSubmit={handleSubmitConnection}>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <input
+                type="text"
+                placeholder="Connection Name *"
+                value={connectionForm.name}
+                onChange={(e) => handleFormChange('name', e.target.value)}
+                className="px-4 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                required
+              />
+              <input
+                type="text"
+                placeholder="Host"
+                value={connectionForm.host}
+                onChange={(e) => handleFormChange('host', e.target.value)}
+                className="px-4 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+              <input
+                type="text"
+                placeholder="Port"
+                value={connectionForm.port}
+                onChange={(e) => handleFormChange('port', e.target.value)}
+                className="px-4 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+              <input
+                type="text"
+                placeholder="Database Name *"
+                value={connectionForm.database}
+                onChange={(e) => handleFormChange('database', e.target.value)}
+                className="px-4 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                required
+              />
+              <input
+                type="text"
+                placeholder="Username *"
+                value={connectionForm.username}
+                onChange={(e) => handleFormChange('username', e.target.value)}
+                className="px-4 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                required
+              />
+              <input
+                type="password"
+                placeholder="Password (optional)"
+                value={connectionForm.password}
+                onChange={(e) => handleFormChange('password', e.target.value)}
+                className="px-4 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+            </div>
+            <div className="flex space-x-3 mt-4">
+              <button 
+                type="submit" 
+                disabled={formLoading}
+                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {formLoading ? 'Testing & Saving...' : 'Test & Save'}
+              </button>
+              <button 
+                type="button"
+                onClick={() => setShowConnectionForm(false)}
+                className="px-4 py-2 border border-slate-200 rounded-lg hover:bg-slate-50"
+              >
+                Cancel
+              </button>
+            </div>
+          </form>
         </div>
-        <div className="flex space-x-3 mt-4">
-          <button className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">
-            Test & Save
-          </button>
-          <button className="px-4 py-2 border border-slate-200 rounded-lg hover:bg-slate-50">
-            Cancel
-          </button>
-        </div>
-      </div>
+      )}
     </div>
   );
 
