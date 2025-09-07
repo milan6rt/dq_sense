@@ -223,31 +223,90 @@ class DataProfilerAgent(BaseAgent):
     
     async def _execute_task(self, task_data: Dict[str, Any]) -> Dict[str, Any]:
         """Execute data profiling task"""
+        action = task_data.get("action", "profile_table")
         table_id = task_data.get("table_id")
         connection_id = task_data.get("connection_id")
         
-        if not table_id:
-            raise ValueError("table_id is required for profiling task")
+        if action == "profile_connection":
+            # Profile all tables for a connection
+            if not connection_id:
+                raise ValueError("connection_id is required for connection profiling")
+            
+            await self._log_activity(f"Starting connection profiling for connection {connection_id}")
+            
+            # Import database manager
+            from database import DatabaseManager
+            import os
+            
+            # Create a database manager instance (simplified)
+            db_manager = DatabaseManager()
+            await db_manager.init()
+            
+            try:
+                # Get all tables for this connection
+                tables = await db_manager.get_tables(connection_id)
+                profiled_tables = []
+                
+                await self._log_activity(f"Found {len(tables)} tables to profile for connection {connection_id}")
+                
+                for table in tables:
+                    table_dict = dict(table) if hasattr(table, '_asdict') else table
+                    tid = table_dict.get('id')
+                    table_name = table_dict.get('name', f'table_{tid}')
+                    
+                    if tid:
+                        await self._log_activity(f"Profiling table {table_name} (ID: {tid})")
+                        # Simulate table profiling
+                        await asyncio.sleep(random.uniform(0.5, 1.5))  # Shorter for bulk profiling
+                        
+                        profiling_result = {
+                            "table_id": tid,
+                            "connection_id": connection_id,
+                            "record_count": table_dict.get('record_count', random.randint(100, 10000)),
+                            "column_count": random.randint(3, 15),
+                            "data_quality_score": round(random.uniform(80, 98), 1),
+                            "null_percentage": round(random.uniform(0, 8), 2),
+                            "duplicate_percentage": round(random.uniform(0, 3), 2),
+                            "profiled_at": datetime.now().isoformat()
+                        }
+                        profiled_tables.append(profiling_result)
+                
+                await self._log_activity(f"Completed connection profiling: {len(profiled_tables)} tables profiled", "success")
+                return {
+                    "status": "completed",
+                    "connection_id": connection_id,
+                    "profiled_tables": len(profiled_tables),
+                    "results": profiled_tables
+                }
+                
+            except Exception as e:
+                await self._log_activity(f"Error during connection profiling: {e}", "error")
+                raise
         
-        await self._log_activity(f"Profiling table {table_id}")
-        
-        # Simulate profiling work
-        await asyncio.sleep(random.uniform(1, 3))
-        
-        # Generate mock profiling results
-        profile_results = {
-            "table_id": table_id,
-            "record_count": random.randint(1000, 1000000),
-            "column_count": random.randint(5, 50),
-            "null_percentage": round(random.uniform(0, 15), 2),
-            "duplicate_percentage": round(random.uniform(0, 5), 2),
-            "quality_score": round(random.uniform(85, 100), 1),
-            "profiled_at": datetime.now().isoformat()
-        }
-        
-        await self._log_activity(f"Profiling completed for table {table_id}", "success", profile_results)
-        
-        return profile_results
+        else:
+            # Profile single table
+            if not table_id:
+                raise ValueError("table_id is required for table profiling task")
+            
+            await self._log_activity(f"Profiling table {table_id}")
+            
+            # Simulate profiling work
+            await asyncio.sleep(random.uniform(1, 3))
+            
+            # Generate mock profiling results
+            profile_results = {
+                "table_id": table_id,
+                "record_count": random.randint(1000, 1000000),
+                "column_count": random.randint(5, 50),
+                "null_percentage": round(random.uniform(0, 15), 2),
+                "duplicate_percentage": round(random.uniform(0, 5), 2),
+                "quality_score": round(random.uniform(85, 100), 1),
+                "profiled_at": datetime.now().isoformat()
+            }
+            
+            await self._log_activity(f"Profiling completed for table {table_id}", "success", profile_results)
+            
+            return profile_results
     
     async def _background_profiler(self):
         """Background task for continuous profiling"""

@@ -79,6 +79,7 @@ const DataIntelligencePlatform = () => {
   const [connections, setConnections] = useState([]);
   const [agents, setAgents] = useState([]);
   const [dashboardMetrics, setDashboardMetrics] = useState(null);
+  const [tables, setTables] = useState([]);
   const [loading, setLoading] = useState(true);
   
   // Form state for new connection
@@ -124,11 +125,19 @@ const DataIntelligencePlatform = () => {
         setDashboardMetrics(metricsData);
       }
 
+      // Fetch tables from connected databases
+      const tablesResponse = await fetch(`${API_BASE}/tables`);
+      if (tablesResponse.ok) {
+        const tablesData = await tablesResponse.json();
+        setTables(tablesData);
+      }
+
     } catch (error) {
       console.error('Error fetching data:', error);
       // Fallback to mock data if API fails
       setConnections(mockConnections);
       setAgents(mockAgents);
+      setTables(mockTables);
     } finally {
       setLoading(false);
     }
@@ -186,6 +195,57 @@ const DataIntelligencePlatform = () => {
       setFormError('Network error. Please check if the backend is running.');
     } finally {
       setFormLoading(false);
+    }
+  };
+
+  // Handle disconnect connection
+  const handleDisconnectConnection = async (connectionId, connectionName) => {
+    if (!window.confirm(`Are you sure you want to disconnect "${connectionName}"?`)) {
+      return;
+    }
+
+    try {
+      const response = await fetch(`${API_BASE}/connections/${connectionId}/disconnect`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      });
+
+      if (response.ok) {
+        // Refresh the connections list
+        await fetchData();
+      } else {
+        const errorData = await response.json();
+        alert(`Failed to disconnect: ${errorData.detail || 'Unknown error'}`);
+      }
+    } catch (error) {
+      alert('Network error. Please check if the backend is running.');
+    }
+  };
+
+  // Handle refresh connection
+  const handleRefreshConnection = async (connectionId) => {
+    try {
+      const response = await fetch(`${API_BASE}/connections/${connectionId}/refresh`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      });
+
+      if (response.ok) {
+        // Refresh the connections list
+        await fetchData();
+        const result = await response.json();
+        // You could show a toast notification here instead of alert
+        // alert(result.message);
+      } else {
+        const errorData = await response.json();
+        alert(`Failed to refresh: ${errorData.detail || 'Unknown error'}`);
+      }
+    } catch (error) {
+      alert('Network error. Please check if the backend is running.');
     }
   };
 
@@ -417,7 +477,14 @@ const DataIntelligencePlatform = () => {
               </tr>
             </thead>
             <tbody>
-              {mockTables.map(table => (
+              {tables.length === 0 ? (
+                <tr>
+                  <td colSpan="6" className="py-8 text-center text-slate-500">
+                    No tables available. Connect to a database to see your tables.
+                  </td>
+                </tr>
+              ) : (
+                tables.slice(0, 5).map(table => (
                 <tr key={table.id} className="border-b border-slate-100 hover:bg-slate-50">
                   <td className="py-3 px-4">
                     <div>
@@ -426,16 +493,16 @@ const DataIntelligencePlatform = () => {
                     </div>
                   </td>
                   <td className="py-3 px-4 text-slate-600">{table.connection}</td>
-                  <td className="py-3 px-4 text-slate-600">{table.records.toLocaleString()}</td>
+                  <td className="py-3 px-4 text-slate-600">{table.record_count ? table.record_count.toLocaleString() : '0'}</td>
                   <td className="py-3 px-4">
                     <div className="flex items-center space-x-2">
                       <div className="w-12 bg-slate-200 rounded-full h-2">
                         <div 
-                          className={`h-2 rounded-full ${table.quality >= 90 ? 'bg-green-500' : table.quality >= 80 ? 'bg-yellow-500' : 'bg-red-500'}`}
-                          style={{ width: `${table.quality}%` }}
+                          className={`h-2 rounded-full ${table.quality_score >= 90 ? 'bg-green-500' : table.quality_score >= 80 ? 'bg-yellow-500' : 'bg-red-500'}`}
+                          style={{ width: `${table.quality_score}%` }}
                         ></div>
                       </div>
-                      <span className="text-sm text-slate-600">{table.quality}%</span>
+                      <span className="text-sm text-slate-600">{table.quality_score}%</span>
                     </div>
                   </td>
                   <td className="py-3 px-4 text-slate-600">{table.lastProfiled}</td>
@@ -446,7 +513,8 @@ const DataIntelligencePlatform = () => {
                     </div>
                   </td>
                 </tr>
-              ))}
+                ))
+              )}
             </tbody>
           </table>
         </div>
@@ -471,7 +539,19 @@ const DataIntelligencePlatform = () => {
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {mockTables.map(table => (
+        {loading ? (
+          <div className="col-span-full text-center py-8">
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto"></div>
+            <p className="text-slate-600 mt-2">Loading tables...</p>
+          </div>
+        ) : tables.length === 0 ? (
+          <div className="col-span-full text-center py-8">
+            <Database className="w-12 h-12 text-slate-400 mx-auto mb-4" />
+            <p className="text-slate-600">No tables found</p>
+            <p className="text-slate-500 text-sm">Connect to a database to see your tables</p>
+          </div>
+        ) : (
+          tables.map(table => (
           <div key={table.id} className="bg-white p-6 rounded-xl shadow-sm border border-slate-200 hover:shadow-md transition-shadow cursor-pointer"
                onClick={() => setSelectedTable(table)}>
             <div className="flex items-start justify-between mb-3">
@@ -493,18 +573,18 @@ const DataIntelligencePlatform = () => {
             <div className="space-y-2">
               <div className="flex items-center justify-between text-sm">
                 <span className="text-slate-600">Records:</span>
-                <span className="font-medium">{table.records.toLocaleString()}</span>
+                <span className="font-medium">{table.record_count ? table.record_count.toLocaleString() : '0'}</span>
               </div>
               <div className="flex items-center justify-between text-sm">
                 <span className="text-slate-600">Quality:</span>
                 <div className="flex items-center space-x-2">
                   <div className="w-16 bg-slate-200 rounded-full h-1.5">
                     <div 
-                      className={`h-1.5 rounded-full ${table.quality >= 90 ? 'bg-green-500' : table.quality >= 80 ? 'bg-yellow-500' : 'bg-red-500'}`}
-                      style={{ width: `${table.quality}%` }}
+                      className={`h-1.5 rounded-full ${table.quality_score >= 90 ? 'bg-green-500' : table.quality_score >= 80 ? 'bg-yellow-500' : 'bg-red-500'}`}
+                      style={{ width: `${table.quality_score}%` }}
                     ></div>
                   </div>
-                  <span className="font-medium">{table.quality}%</span>
+                  <span className="font-medium">{table.quality_score}%</span>
                 </div>
               </div>
               <div className="flex items-center justify-between text-sm">
@@ -520,7 +600,8 @@ const DataIntelligencePlatform = () => {
               </div>
             </div>
           </div>
-        ))}
+          ))
+        )}
       </div>
 
       {selectedTable && (
@@ -1121,11 +1202,21 @@ const DataIntelligencePlatform = () => {
             </div>
             
             <div className="flex space-x-2 mt-4">
-              <button className="flex-1 px-3 py-2 bg-blue-100 text-blue-700 rounded-lg hover:bg-blue-200 text-sm">
-                Test
+              <button 
+                onClick={() => handleRefreshConnection(conn.id)}
+                className="flex-1 px-3 py-2 bg-green-100 text-green-700 rounded-lg hover:bg-green-200 text-sm flex items-center justify-center space-x-1"
+                title="Refresh connection"
+              >
+                <RefreshCw className="w-3 h-3" />
+                <span>Refresh</span>
               </button>
-              <button className="flex-1 px-3 py-2 bg-slate-100 text-slate-700 rounded-lg hover:bg-slate-200 text-sm">
-                Configure
+              <button 
+                onClick={() => handleDisconnectConnection(conn.id, conn.name)}
+                className="flex-1 px-3 py-2 bg-red-100 text-red-700 rounded-lg hover:bg-red-200 text-sm flex items-center justify-center space-x-1"
+                title="Disconnect"
+              >
+                <X className="w-3 h-3" />
+                <span>Disconnect</span>
               </button>
             </div>
             </div>

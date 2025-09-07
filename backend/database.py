@@ -178,7 +178,7 @@ class DatabaseManager:
         async with self.metadata_pool.acquire() as conn:
             rows = await conn.fetch("""
                 SELECT id, name, host, port, database_name as database, username, 
-                       connection_type, status, last_sync, created_at, created_at as updated_at
+                       connection_type, status, last_sync, created_at, updated_at
                 FROM data_connections
                 ORDER BY created_at DESC
             """)
@@ -242,6 +242,179 @@ class DatabaseManager:
                 
                 return {"status": "error", "message": str(e)}
     
+    async def disconnect_connection(self, connection_id: int) -> bool:
+        """Disconnect a database connection by setting its status to disconnected"""
+        async with self.metadata_pool.acquire() as conn:
+            try:
+                await conn.execute("""
+                    UPDATE data_connections 
+                    SET status = 'disconnected', last_sync = NULL, updated_at = CURRENT_TIMESTAMP
+                    WHERE id = $1
+                """, connection_id)
+                
+                logger.info(f"Connection {connection_id} disconnected successfully")
+                return True
+            except Exception as e:
+                logger.error(f"Failed to disconnect connection {connection_id}: {e}")
+                return False
+    
+    async def refresh_connection(self, connection_id: int) -> dict:
+        """Refresh a database connection (test and update status)"""
+        async with self.metadata_pool.acquire() as conn:
+            connection_data = await conn.fetchrow("""
+                SELECT host, port, database_name, username, password_hash
+                FROM data_connections WHERE id = $1
+            """, connection_id)
+            
+            if not connection_data:
+                return {"status": "error", "message": "Connection not found"}
+            
+            try:
+                # Test the connection
+                test_conn = await asyncpg.connect(
+                    host=connection_data['host'],
+                    port=connection_data['port'],
+                    database=connection_data['database_name'],
+                    user=connection_data['username'],
+                    password=connection_data['password_hash']  # In real app, decrypt this
+                )
+                
+                # Update status to connected
+                await conn.execute("""
+                    UPDATE data_connections 
+                    SET status = 'connected', last_sync = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
+                    WHERE id = $1
+                """, connection_id)
+                
+                await test_conn.close()
+                logger.info(f"Connection {connection_id} refreshed successfully")
+                
+                # Discover and store tables for this connection
+                try:
+                    tables = await self.discover_tables(connection_id)
+                    await self.store_discovered_tables(tables)
+                    logger.info(f"Discovered {len(tables)} tables for connection {connection_id}")
+                    
+                    # Trigger agent profiling for all discovered tables
+                    import agents
+                    agent_orchestrator = agents.agent_orchestrator
+                    await agent_orchestrator.submit_task(
+                        agent_type="data_profiler",
+                        action="profile_connection",
+                        connection_id=connection_id
+                    )
+                    
+                except Exception as e:
+                    logger.error(f"Failed to discover tables for connection {connection_id}: {e}")
+                    # Don't fail the connection refresh if table discovery fails
+                    pass
+                
+                return {"status": "connected", "message": "Connection refreshed successfully"}
+                
+            except Exception as e:
+                # Update status to error
+                await conn.execute("""
+                    UPDATE data_connections 
+                    SET status = 'error', updated_at = CURRENT_TIMESTAMP
+                    WHERE id = $1
+                """, connection_id)
+                
+                logger.error(f"Failed to refresh connection {connection_id}: {e}")
+                return {"status": "error", "message": str(e)}
+    
+    async def discover_tables(self, connection_id: int) -> List[dict]:
+        """Discover all tables in a connected database"""
+        async with self.metadata_pool.acquire() as meta_conn:
+            connection_data = await meta_conn.fetchrow("""
+                SELECT host, port, database_name, username, password_hash
+                FROM data_connections WHERE id = $1
+            """, connection_id)
+            
+            if not connection_data:
+                raise ValueError("Connection not found")
+        
+        # Connect to target database
+        target_conn = await asyncpg.connect(
+            host=connection_data['host'],
+            port=connection_data['port'],
+            database=connection_data['database_name'],
+            user=connection_data['username'],
+            password=connection_data['password_hash']  # In real app, decrypt this
+        )
+        
+        try:
+            # Discover tables from information_schema
+            discovered_tables = await target_conn.fetch("""
+                SELECT 
+                    schemaname,
+                    tablename,
+                    tableowner
+                FROM pg_tables
+                WHERE schemaname NOT IN ('information_schema', 'pg_catalog', 'pg_toast')
+                ORDER BY schemaname, tablename
+            """)
+            
+            tables = []
+            for table_row in discovered_tables:
+                schema_name = table_row['schemaname']
+                table_name = table_row['tablename']
+                owner = table_row['tableowner']
+                
+                # Get table row count
+                try:
+                    count_result = await target_conn.fetchval(f"""
+                        SELECT COUNT(*) FROM "{schema_name}"."{table_name}"
+                    """)
+                    record_count = count_result or 0
+                except Exception:
+                    record_count = 0
+                
+                tables.append({
+                    'schema_name': schema_name,
+                    'table_name': table_name,
+                    'record_count': record_count,
+                    'owner': owner,
+                    'connection_id': connection_id
+                })
+            
+            return tables
+            
+        finally:
+            await target_conn.close()
+    
+    async def store_discovered_tables(self, tables: List[dict]) -> List[int]:
+        """Store discovered tables in metadata database"""
+        table_ids = []
+        async with self.metadata_pool.acquire() as conn:
+            for table in tables:
+                # Check if table already exists
+                existing = await conn.fetchval("""
+                    SELECT id FROM table_metadata 
+                    WHERE connection_id = $1 AND schema_name = $2 AND name = $3
+                """, table['connection_id'], table['schema_name'], table['table_name'])
+                
+                if existing:
+                    # Update existing table
+                    await conn.execute("""
+                        UPDATE table_metadata 
+                        SET record_count = $1, owner = $2, updated_at = CURRENT_TIMESTAMP
+                        WHERE id = $3
+                    """, table['record_count'], table.get('owner'), existing)
+                    table_ids.append(existing)
+                else:
+                    # Insert new table
+                    table_id = await conn.fetchval("""
+                        INSERT INTO table_metadata 
+                        (connection_id, schema_name, name, record_count, owner, quality_score, last_profiled)
+                        VALUES ($1, $2, $3, $4, $5, 100.0, NULL)
+                        RETURNING id
+                    """, table['connection_id'], table['schema_name'], table['table_name'], 
+                         table['record_count'], table.get('owner'))
+                    table_ids.append(table_id)
+        
+        logger.info(f"Stored {len(tables)} tables, got IDs: {table_ids}")
+        return table_ids
+    
     async def create_connection(self, connection_request):
         """Create a new database connection from CreateConnectionRequest"""
         try:
@@ -256,6 +429,16 @@ class DatabaseManager:
                 'connection_type': connection_request.connection_type,
                 'status': 'connected'
             })
+            
+            # Automatically discover and store tables
+            try:
+                logger.info(f"Discovering tables for connection {connection_id}")
+                discovered_tables = await self.discover_tables(connection_id)
+                table_ids = await self.store_discovered_tables(discovered_tables)
+                logger.info(f"Discovered and stored {len(table_ids)} tables for connection {connection_id}")
+            except Exception as discovery_error:
+                logger.warning(f"Failed to discover tables for connection {connection_id}: {discovery_error}")
+                # Don't fail the connection creation if table discovery fails
             
             # Return DatabaseConnection model
             from models import DatabaseConnection, ConnectionStatus
@@ -303,7 +486,11 @@ class DatabaseManager:
         async with self.metadata_pool.acquire() as conn:
             if connection_id:
                 rows = await conn.fetch("""
-                    SELECT tm.*, dc.name as connection_name
+                    SELECT tm.id, tm.connection_id, tm.name, tm.schema_name, tm.record_count,
+                           tm.quality_score, tm.last_profiled, tm.description, tm.owner,
+                           COALESCE(tm.tags, '{}') as tags, tm.popularity,
+                           tm.created_at, tm.updated_at,
+                           dc.name as connection_name
                     FROM table_metadata tm
                     JOIN data_connections dc ON tm.connection_id = dc.id
                     WHERE tm.connection_id = $1
@@ -311,7 +498,11 @@ class DatabaseManager:
                 """, connection_id)
             else:
                 rows = await conn.fetch("""
-                    SELECT tm.*, dc.name as connection_name
+                    SELECT tm.id, tm.connection_id, tm.name, tm.schema_name, tm.record_count,
+                           tm.quality_score, tm.last_profiled, tm.description, tm.owner,
+                           COALESCE(tm.tags, '{}') as tags, tm.popularity,
+                           tm.created_at, tm.updated_at,
+                           dc.name as connection_name
                     FROM table_metadata tm
                     JOIN data_connections dc ON tm.connection_id = dc.id
                     ORDER BY tm.updated_at DESC
@@ -325,8 +516,38 @@ class DatabaseManager:
     
     async def get_table_details(self, table_id: int):
         """Get detailed table information"""
-        # For now, return basic info - this would be expanded with profiling data
-        return {"id": table_id, "name": f"table_{table_id}", "columns": []}
+        async with self.metadata_pool.acquire() as conn:
+            # Get table metadata
+            table = await conn.fetchrow("""
+                SELECT tm.id, tm.connection_id, tm.name, tm.schema_name, tm.record_count,
+                       tm.quality_score, tm.last_profiled, tm.description, tm.owner,
+                       COALESCE(tm.tags, '{}') as tags, tm.popularity,
+                       tm.created_at, tm.updated_at,
+                       dc.name as connection_name
+                FROM table_metadata tm
+                JOIN data_connections dc ON tm.connection_id = dc.id
+                WHERE tm.id = $1
+            """, table_id)
+            
+            if not table:
+                return None
+                
+            # Get columns for this table
+            columns = await conn.fetch("""
+                SELECT id, name, data_type, is_nullable, is_primary_key, is_foreign_key,
+                       quality_score, null_percentage, unique_percentage, sample_values,
+                       created_at, updated_at
+                FROM column_metadata
+                WHERE table_id = $1
+                ORDER BY id
+            """, table_id)
+            
+            # Convert to dict and add columns
+            result = dict(table)
+            result['columns'] = [dict(col) for col in columns]
+            result['sample_data'] = []  # Could be expanded to return sample data
+            
+            return result
     
     async def get_table_columns(self, table_id: int):
         """Get columns for a table"""

@@ -75,11 +75,11 @@ async def get_dashboard_metrics(db: DatabaseManager = Depends(get_db)):
         issues = await db.get_quality_issues()
         
         # Calculate metrics
-        active_connections = len([c for c in connections if c.status == "connected"])
-        total_records = sum(table.record_count for table in tables)
-        avg_quality = sum(table.quality_score for table in tables) / len(tables) if tables else 0
-        active_agents = len([a for a in agents if a.status == "active"])
-        critical_issues = len([i for i in issues if i.severity == "high"])
+        active_connections = len([c for c in connections if c.get('status') == "connected"])
+        total_records = sum(table.get('record_count', 0) if isinstance(table, dict) else table.record_count for table in tables)
+        avg_quality = sum(table.get('quality_score', 0) if isinstance(table, dict) else table.quality_score for table in tables) / len(tables) if tables else 0
+        active_agents = len([a for a in agents if (a.get('status') if isinstance(a, dict) else a.status) == "active"])
+        critical_issues = len([i for i in issues if (i.get('severity') if isinstance(i, dict) else i.severity) == "high"])
         
         return DashboardMetrics(
             total_connections=len(connections),
@@ -153,7 +153,66 @@ async def test_connection(connection_id: int, db: DatabaseManager = Depends(get_
         logger.error(f"Error testing connection: {e}")
         raise HTTPException(status_code=500, detail="Failed to test connection")
 
+@app.post("/api/connections/{connection_id}/disconnect")
+async def disconnect_connection(connection_id: int, db: DatabaseManager = Depends(get_db)):
+    """Disconnect a database connection"""
+    try:
+        connection = await db.get_connection(connection_id)
+        if not connection:
+            raise HTTPException(status_code=404, detail="Connection not found")
+        
+        success = await db.disconnect_connection(connection_id)
+        if success:
+            return {"message": "Connection disconnected successfully", "connection_id": connection_id}
+        else:
+            raise HTTPException(status_code=500, detail="Failed to disconnect connection")
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error disconnecting connection: {e}")
+        raise HTTPException(status_code=500, detail="Failed to disconnect connection")
+
+@app.post("/api/connections/{connection_id}/refresh")
+async def refresh_connection(connection_id: int, db: DatabaseManager = Depends(get_db)):
+    """Refresh a database connection (reconnect and update status)"""
+    try:
+        connection = await db.get_connection(connection_id)
+        if not connection:
+            raise HTTPException(status_code=404, detail="Connection not found")
+        
+        result = await db.refresh_connection(connection_id)
+        return {
+            "message": "Connection refreshed successfully", 
+            "connection_id": connection_id,
+            "status": result["status"],
+            "timestamp": datetime.now().isoformat()
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error refreshing connection: {e}")
+        raise HTTPException(status_code=500, detail="Failed to refresh connection")
+
 # Data Catalog Endpoints
+@app.get("/api/tables", response_model=List[TableInfo])
+async def get_tables(
+    connection_id: Optional[int] = None,
+    schema_name: Optional[str] = None,
+    search: Optional[str] = None,
+    db: DatabaseManager = Depends(get_db)
+):
+    """Get all tables from connected databases (used by frontend)"""
+    try:
+        tables = await db.get_all_tables(
+            connection_id=connection_id,
+            schema_name=schema_name,
+            search=search
+        )
+        return tables
+    except Exception as e:
+        logger.error(f"Error fetching tables: {e}")
+        raise HTTPException(status_code=500, detail="Failed to fetch tables")
+
 @app.get("/api/catalog/tables", response_model=List[TableInfo])
 async def get_catalog_tables(
     connection_id: Optional[int] = None,
