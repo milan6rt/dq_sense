@@ -81,6 +81,11 @@ const DataIntelligencePlatform = () => {
   const [dashboardMetrics, setDashboardMetrics] = useState(null);
   const [tables, setTables] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [connectionStatus, setConnectionStatus] = useState({ 
+    has_connected_db: false, 
+    connected: 0, 
+    total_connections: 0 
+  });
   
   // Form state for new connection
   const [showConnectionForm, setShowConnectionForm] = useState(false);
@@ -104,32 +109,57 @@ const DataIntelligencePlatform = () => {
     try {
       setLoading(true);
       
-      // Fetch connections
-      const connectionsResponse = await fetch(`${API_BASE}/connections`);
-      if (connectionsResponse.ok) {
-        const connectionsData = await connectionsResponse.json();
-        setConnections(connectionsData);
+      // First, fetch connection status to determine if we have connected databases
+      const statusResponse = await fetch(`${API_BASE}/connections/status`);
+      let hasConnectedDb = false;
+      
+      if (statusResponse.ok) {
+        const statusData = await statusResponse.json();
+        setConnectionStatus(statusData);
+        setConnections(statusData.connections || []);
+        hasConnectedDb = statusData.has_connected_db;
+      } else {
+        // Fallback: fetch connections directly
+        const connectionsResponse = await fetch(`${API_BASE}/connections`);
+        if (connectionsResponse.ok) {
+          const connectionsData = await connectionsResponse.json();
+          setConnections(connectionsData);
+          hasConnectedDb = connectionsData.some(conn => conn.status === 'connected');
+          setConnectionStatus({ 
+            has_connected_db: hasConnectedDb, 
+            connected: connectionsData.filter(c => c.status === 'connected').length,
+            total_connections: connectionsData.length 
+          });
+        }
       }
 
-      // Fetch agents
+      // Fetch agents (always available)
       const agentsResponse = await fetch(`${API_BASE}/agents`);
       if (agentsResponse.ok) {
         const agentsData = await agentsResponse.json();
         setAgents(agentsData);
       }
 
-      // Fetch dashboard metrics
-      const metricsResponse = await fetch(`${API_BASE}/dashboard/metrics`);
-      if (metricsResponse.ok) {
-        const metricsData = await metricsResponse.json();
-        setDashboardMetrics(metricsData);
-      }
+      if (hasConnectedDb) {
+        // Only fetch database-dependent data if we have connected databases
+        
+        // Fetch dashboard metrics
+        const metricsResponse = await fetch(`${API_BASE}/dashboard/metrics`);
+        if (metricsResponse.ok) {
+          const metricsData = await metricsResponse.json();
+          setDashboardMetrics(metricsData);
+        }
 
-      // Fetch tables from connected databases
-      const tablesResponse = await fetch(`${API_BASE}/tables`);
-      if (tablesResponse.ok) {
-        const tablesData = await tablesResponse.json();
-        setTables(tablesData);
+        // Fetch tables from connected databases  
+        const tablesResponse = await fetch(`${API_BASE}/tables`);
+        if (tablesResponse.ok) {
+          const tablesData = await tablesResponse.json();
+          setTables(tablesData);
+        }
+      } else {
+        // Clear all database-dependent data when no databases are connected
+        setDashboardMetrics(null);
+        setTables([]);
       }
 
     } catch (error) {
@@ -138,6 +168,7 @@ const DataIntelligencePlatform = () => {
       setConnections(mockConnections);
       setAgents(mockAgents);
       setTables(mockTables);
+      setConnectionStatus({ has_connected_db: true, connected: 1, total_connections: 1 });
     } finally {
       setLoading(false);
     }
@@ -199,7 +230,7 @@ const DataIntelligencePlatform = () => {
   };
 
   // Handle disconnect connection
-  const handleDisconnectConnection = async (connectionId, connectionName) => {
+  async function handleDisconnectConnection(connectionId, connectionName) {
     if (!window.confirm(`Are you sure you want to disconnect "${connectionName}"?`)) {
       return;
     }
@@ -222,10 +253,10 @@ const DataIntelligencePlatform = () => {
     } catch (error) {
       alert('Network error. Please check if the backend is running.');
     }
-  };
+  }
 
   // Handle refresh connection
-  const handleRefreshConnection = async (connectionId) => {
+  async function handleRefreshConnection(connectionId) {
     try {
       const response = await fetch(`${API_BASE}/connections/${connectionId}/refresh`, {
         method: 'POST',
@@ -247,7 +278,7 @@ const DataIntelligencePlatform = () => {
     } catch (error) {
       alert('Network error. Please check if the backend is running.');
     }
-  };
+  }
 
   // Initial data fetch
   useEffect(() => {
@@ -355,15 +386,30 @@ const DataIntelligencePlatform = () => {
           <p className="text-slate-600">Real-time insights from your multi-agent data quality system</p>
         </div>
         <div className="flex space-x-3">
-          <button className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center space-x-2">
+          <button onClick={fetchData} className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center space-x-2">
             <RefreshCw className="w-4 h-4" />
             <span>Refresh</span>
           </button>
         </div>
       </div>
 
-      {/* Stats Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+      {!connectionStatus.has_connected_db ? (
+        // Empty state when no databases are connected
+        <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-12 text-center">
+          <Database className="w-16 h-16 text-slate-400 mx-auto mb-4" />
+          <h3 className="text-lg font-semibold text-slate-800 mb-2">No Database Connected</h3>
+          <p className="text-slate-600 mb-4">Connect to a database to see your data quality insights and metrics.</p>
+          <button 
+            onClick={() => setActiveTab('connections')}
+            className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+          >
+            Go to Connections
+          </button>
+        </div>
+      ) : (
+        <>
+          {/* Stats Cards */}
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
           <div className="flex items-center justify-between">
             <div>
@@ -519,6 +565,8 @@ const DataIntelligencePlatform = () => {
           </table>
         </div>
       </div>
+      </>
+      )}
     </div>
   );
 
@@ -1141,7 +1189,8 @@ const DataIntelligencePlatform = () => {
     </div>
   );
 
-  const ConnectionsTab = () => (
+  function ConnectionsTab() {
+    return (
     <div className="p-6 space-y-6">
       <div className="flex items-center justify-between">
         <h2 className="text-2xl font-bold text-slate-800">Data Connections</h2>
@@ -1303,7 +1352,8 @@ const DataIntelligencePlatform = () => {
         </div>
       )}
     </div>
-  );
+    );
+  }
 
   const GovernanceTab = () => (
     <div className="p-6 space-y-6">

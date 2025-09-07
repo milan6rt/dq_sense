@@ -243,16 +243,39 @@ class DatabaseManager:
                 return {"status": "error", "message": str(e)}
     
     async def disconnect_connection(self, connection_id: int) -> bool:
-        """Disconnect a database connection by setting its status to disconnected"""
+        """Disconnect a database connection and clear all associated data"""
         async with self.metadata_pool.acquire() as conn:
             try:
-                await conn.execute("""
-                    UPDATE data_connections 
-                    SET status = 'disconnected', last_sync = NULL, updated_at = CURRENT_TIMESTAMP
-                    WHERE id = $1
-                """, connection_id)
+                # Start a transaction to ensure atomicity
+                async with conn.transaction():
+                    # Clear all tables and associated data for this connection
+                    await conn.execute("""
+                        DELETE FROM column_metadata 
+                        WHERE table_id IN (
+                            SELECT id FROM table_metadata WHERE connection_id = $1
+                        )
+                    """, connection_id)
+                    
+                    await conn.execute("""
+                        DELETE FROM table_metadata WHERE connection_id = $1
+                    """, connection_id)
+                    
+                    # Clear quality issues for this connection
+                    await conn.execute("""
+                        DELETE FROM quality_issues 
+                        WHERE table_id IN (
+                            SELECT id FROM table_metadata WHERE connection_id = $1
+                        )
+                    """, connection_id)
+                    
+                    # Update connection status to disconnected
+                    await conn.execute("""
+                        UPDATE data_connections 
+                        SET status = 'disconnected', last_sync = NULL, updated_at = CURRENT_TIMESTAMP
+                        WHERE id = $1
+                    """, connection_id)
                 
-                logger.info(f"Connection {connection_id} disconnected successfully")
+                logger.info(f"Connection {connection_id} disconnected and all associated data cleared")
                 return True
             except Exception as e:
                 logger.error(f"Failed to disconnect connection {connection_id}: {e}")
@@ -497,6 +520,7 @@ class DatabaseManager:
                     ORDER BY tm.updated_at DESC
                 """, connection_id)
             else:
+                # Only return tables from connected databases
                 rows = await conn.fetch("""
                     SELECT tm.id, tm.connection_id, tm.name, tm.schema_name, tm.record_count,
                            tm.quality_score, tm.last_profiled, tm.description, tm.owner,
@@ -505,6 +529,7 @@ class DatabaseManager:
                            dc.name as connection_name
                     FROM table_metadata tm
                     JOIN data_connections dc ON tm.connection_id = dc.id
+                    WHERE dc.status = 'connected'
                     ORDER BY tm.updated_at DESC
                 """)
             

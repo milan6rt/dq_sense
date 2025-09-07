@@ -193,6 +193,26 @@ async def refresh_connection(connection_id: int, db: DatabaseManager = Depends(g
         logger.error(f"Error refreshing connection: {e}")
         raise HTTPException(status_code=500, detail="Failed to refresh connection")
 
+@app.get("/api/connections/status")
+async def get_connection_status(db: DatabaseManager = Depends(get_db)):
+    """Get summary of connection statuses for real-time updates"""
+    try:
+        connections = await db.get_connections()
+        connected_count = len([c for c in connections if c.get('status') == 'connected'])
+        disconnected_count = len([c for c in connections if c.get('status') == 'disconnected'])
+        
+        return {
+            "total_connections": len(connections),
+            "connected": connected_count,
+            "disconnected": disconnected_count,
+            "has_connected_db": connected_count > 0,
+            "timestamp": datetime.now().isoformat(),
+            "connections": connections
+        }
+    except Exception as e:
+        logger.error(f"Error fetching connection status: {e}")
+        raise HTTPException(status_code=500, detail="Failed to fetch connection status")
+
 # Data Catalog Endpoints
 @app.get("/api/tables", response_model=List[TableInfo])
 async def get_tables(
