@@ -932,123 +932,716 @@ const DataIntelligencePlatform = () => {
   );
 
   const LineageTab = () => {
-    const canvasRef = useRef(null);
+    const [lineageData, setLineageData] = useState({ nodes: [], edges: [] });
+    const [selectedTable, setSelectedTable] = useState(null);
+    const [impactData, setImpactData] = useState(null);
+    const [isLoading, setIsLoading] = useState(true);
+    const [zoomLevel, setZoomLevel] = useState(1);
+    const [panX, setPanX] = useState(0);
+    const [panY, setPanY] = useState(0);
+    const [isDragging, setIsDragging] = useState(false);
+    const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
+    const svgRef = useRef(null);
+    const containerRef = useRef(null);
     
-    useEffect(() => {
-      if (canvasRef.current) {
-        const canvas = canvasRef.current;
-        const ctx = canvas.getContext('2d');
-        canvas.width = canvas.offsetWidth;
-        canvas.height = canvas.offsetHeight;
-        
-        // Simple lineage visualization
-        ctx.clearRect(0, 0, canvas.width, canvas.height);
-        
-        // Draw connections
-        ctx.strokeStyle = '#3b82f6';
-        ctx.lineWidth = 2;
-        ctx.beginPath();
-        ctx.moveTo(150, 100);
-        ctx.lineTo(250, 100);
-        ctx.moveTo(350, 100);
-        ctx.lineTo(450, 100);
-        ctx.moveTo(300, 150);
-        ctx.lineTo(300, 180);
-        ctx.stroke();
-        
-        // Draw nodes
-        const nodes = [
-          { x: 100, y: 100, label: 'users', color: '#10b981' },
-          { x: 300, y: 100, label: 'user_profile', color: '#f59e0b' },
-          { x: 500, y: 100, label: 'analytics_users', color: '#ef4444' },
-          { x: 300, y: 200, label: 'user_events', color: '#f59e0b' }
-        ];
-        
-        nodes.forEach(node => {
-          ctx.fillStyle = node.color;
-          ctx.beginPath();
-          ctx.arc(node.x, node.y, 20, 0, 2 * Math.PI);
-          ctx.fill();
-          
-          ctx.fillStyle = '#1f2937';
-          ctx.font = '12px sans-serif';
-          ctx.textAlign = 'center';
-          ctx.fillText(node.label, node.x, node.y + 35);
+    // Fetch overall lineage data
+    const fetchLineageData = async () => {
+      try {
+        setIsLoading(true);
+        const response = await fetch(`${API_BASE}/lineage/graph`);
+        if (response.ok) {
+          const data = await response.json();
+          setLineageData(data);
+        }
+      } catch (error) {
+        console.error('Failed to fetch lineage data:', error);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+    
+    // Fetch impact analysis for selected table
+    const fetchImpactAnalysis = async (tableId) => {
+      try {
+        const response = await fetch(`${API_BASE}/lineage/impact/${tableId}`);
+        if (response.ok) {
+          const data = await response.json();
+          setImpactData(data);
+        }
+      } catch (error) {
+        console.error('Failed to fetch impact analysis:', error);
+      }
+    };
+    
+    // Trigger lineage discovery
+    const discoverLineage = async () => {
+      if (!connections || connections.length === 0) return;
+      
+      try {
+        for (const conn of connections.filter(c => c.status === 'connected')) {
+          await fetch(`${API_BASE}/lineage/discover/${conn.id}`, { method: 'POST' });
+        }
+        // Refresh lineage data after discovery
+        await fetchLineageData();
+      } catch (error) {
+        console.error('Failed to discover lineage:', error);
+      }
+    };
+    
+    // Zoom and Pan Controls
+    const handleZoomIn = () => {
+      setZoomLevel(prev => Math.min(prev * 1.2, 3));
+    };
+    
+    const handleZoomOut = () => {
+      setZoomLevel(prev => Math.max(prev / 1.2, 0.3));
+    };
+    
+    const handleZoomFit = () => {
+      setZoomLevel(1);
+      setPanX(0);
+      setPanY(0);
+    };
+    
+    const handleMouseDown = (e) => {
+      if (e.target === svgRef.current) {
+        setIsDragging(true);
+        setDragStart({ 
+          x: e.clientX - panX, 
+          y: e.clientY - panY 
         });
       }
+    };
+    
+    const handleMouseMove = (e) => {
+      if (isDragging) {
+        setPanX(e.clientX - dragStart.x);
+        setPanY(e.clientY - dragStart.y);
+      }
+    };
+    
+    const handleMouseUp = () => {
+      setIsDragging(false);
+    };
+    
+    useEffect(() => {
+      if (isDragging) {
+        document.addEventListener('mousemove', handleMouseMove);
+        document.addEventListener('mouseup', handleMouseUp);
+        return () => {
+          document.removeEventListener('mousemove', handleMouseMove);
+          document.removeEventListener('mouseup', handleMouseUp);
+        };
+      }
+    }, [isDragging, dragStart]);
+    
+    useEffect(() => {
+      fetchLineageData();
     }, []);
+    
+    // Left-to-Right Hierarchical Layout like Alation
+    useEffect(() => {
+      if (!svgRef.current || lineageData.nodes.length === 0) return;
+      
+      const svg = svgRef.current;
+      const width = 1200;
+      const height = 600;
+      
+      // Clear previous content
+      svg.innerHTML = '';
+      
+      // Create hierarchical layout using topological sorting
+      const createHierarchicalLayout = () => {
+        const nodes = [...lineageData.nodes];
+        const edges = [...lineageData.edges];
+        
+        // Calculate in-degree for each node
+        const inDegree = {};
+        const outDegree = {};
+        nodes.forEach(node => {
+          inDegree[node.id] = 0;
+          outDegree[node.id] = 0;
+        });
+        
+        edges.forEach(edge => {
+          inDegree[edge.target]++;
+          outDegree[edge.source]++;
+        });
+        
+        // Assign nodes to layers based on dependency
+        const layers = [];
+        const processed = new Set();
+        const nodeToLayer = {};
+        
+        // Start with source nodes (no incoming edges)
+        let currentLayer = nodes.filter(node => inDegree[node.id] === 0);
+        if (currentLayer.length === 0) {
+          // Handle cyclic graphs - start with any node
+          currentLayer = [nodes[0]];
+        }
+        
+        let layerIndex = 0;
+        while (currentLayer.length > 0 && processed.size < nodes.length) {
+          layers[layerIndex] = [...currentLayer];
+          currentLayer.forEach(node => {
+            processed.add(node.id);
+            nodeToLayer[node.id] = layerIndex;
+          });
+          
+          // Find next layer - nodes whose dependencies are all processed
+          const nextLayer = [];
+          nodes.forEach(node => {
+            if (!processed.has(node.id)) {
+              const dependencies = edges.filter(e => e.target === node.id);
+              const allDependenciesProcessed = dependencies.every(dep => 
+                processed.has(dep.source)
+              );
+              if (allDependenciesProcessed) {
+                nextLayer.push(node);
+              }
+            }
+          });
+          
+          currentLayer = nextLayer;
+          layerIndex++;
+          
+          // Prevent infinite loops
+          if (layerIndex > nodes.length) break;
+        }
+        
+        // Add any remaining unprocessed nodes to the last layer
+        const unprocessed = nodes.filter(node => !processed.has(node.id));
+        if (unprocessed.length > 0) {
+          if (layers[layerIndex]) {
+            layers[layerIndex].push(...unprocessed);
+          } else {
+            layers[layerIndex] = unprocessed;
+          }
+        }
+        
+        return { layers, nodeToLayer };
+      };
+      
+      const { layers, nodeToLayer } = createHierarchicalLayout();
+      
+      // Position nodes in left-to-right layout
+      const layerWidth = width / (layers.length + 1);
+      const nodes = [];
+      
+      layers.forEach((layer, layerIdx) => {
+        const layerHeight = height / (layer.length + 1);
+        
+        layer.forEach((node, nodeIdx) => {
+          nodes.push({
+            ...node,
+            x: (layerIdx + 1) * layerWidth,
+            y: (nodeIdx + 1) * layerHeight,
+            layer: layerIdx
+          });
+        });
+      });
+      
+      // Add definitions for gradients and patterns
+      const defs = document.createElementNS('http://www.w3.org/2000/svg', 'defs');
+      
+      // Create gradient definitions - Alation style colors
+      const createGradient = (id, color1, color2) => {
+        const gradient = document.createElementNS('http://www.w3.org/2000/svg', 'linearGradient');
+        gradient.setAttribute('id', id);
+        gradient.setAttribute('x1', '0%');
+        gradient.setAttribute('y1', '0%');
+        gradient.setAttribute('x2', '0%');
+        gradient.setAttribute('y2', '100%');
+        
+        const stop1 = document.createElementNS('http://www.w3.org/2000/svg', 'stop');
+        stop1.setAttribute('offset', '0%');
+        stop1.setAttribute('stop-color', color1);
+        
+        const stop2 = document.createElementNS('http://www.w3.org/2000/svg', 'stop');
+        stop2.setAttribute('offset', '100%');
+        stop2.setAttribute('stop-color', color2);
+        
+        gradient.appendChild(stop1);
+        gradient.appendChild(stop2);
+        return gradient;
+      };
+      
+      // Alation-style color scheme
+      defs.appendChild(createGradient('sourceGradient', '#f0f9ff', '#e0f2fe')); // Light blue
+      defs.appendChild(createGradient('tableGradient', '#ffffff', '#f8fafc')); // White to light gray
+      defs.appendChild(createGradient('targetGradient', '#fefce8', '#fef3c7')); // Light yellow
+      
+      // Create arrow marker for connections
+      const marker = document.createElementNS('http://www.w3.org/2000/svg', 'marker');
+      marker.setAttribute('id', 'arrowhead');
+      marker.setAttribute('markerWidth', '10');
+      marker.setAttribute('markerHeight', '10');
+      marker.setAttribute('refX', '9');
+      marker.setAttribute('refY', '3');
+      marker.setAttribute('orient', 'auto');
+      marker.setAttribute('markerUnits', 'strokeWidth');
+      
+      const arrowPath = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+      arrowPath.setAttribute('d', 'M0,0 L0,6 L9,3 z');
+      arrowPath.setAttribute('fill', '#64748b');
+      arrowPath.setAttribute('stroke', 'none');
+      
+      marker.appendChild(arrowPath);
+      defs.appendChild(marker);
+      svg.appendChild(defs);
+      
+      // Main group for zoom/pan transform
+      const mainGroup = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+      mainGroup.setAttribute('transform', `translate(${panX}, ${panY}) scale(${zoomLevel})`);
+      
+      // Draw connections first (so they appear behind nodes)
+      lineageData.edges.forEach(edge => {
+        const sourceNode = nodes.find(n => n.id === edge.source);
+        const targetNode = nodes.find(n => n.id === edge.target);
+        
+        if (sourceNode && targetNode) {
+          const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+          
+          // Create smooth curved paths from left to right
+          const nodeWidth = 200; // Width of table boxes
+          const nodeHeight = 80; // Height of table boxes
+          
+          const startX = sourceNode.x + nodeWidth/2; // Right edge of source node
+          const startY = sourceNode.y;
+          const endX = targetNode.x - nodeWidth/2; // Left edge of target node
+          const endY = targetNode.y;
+          
+          // Control points for smooth S-curve (horizontal flow)
+          const controlX1 = startX + (endX - startX) * 0.6;
+          const controlY1 = startY;
+          const controlX2 = startX + (endX - startX) * 0.4;
+          const controlY2 = endY;
+          
+          const pathData = `M ${startX} ${startY} 
+                           C ${controlX1} ${controlY1}, ${controlX2} ${controlY2}, ${endX} ${endY}`;
+          
+          path.setAttribute('d', pathData);
+          path.setAttribute('stroke', '#64748b');
+          path.setAttribute('stroke-width', '2');
+          path.setAttribute('fill', 'none');
+          path.setAttribute('marker-end', 'url(#arrowhead)');
+          path.setAttribute('opacity', '0.7');
+          
+          // Add hover effects
+          path.onmouseover = () => {
+            path.setAttribute('stroke', '#3b82f6');
+            path.setAttribute('stroke-width', '3');
+            path.setAttribute('opacity', '1');
+          };
+          path.onmouseout = () => {
+            path.setAttribute('stroke', '#64748b');
+            path.setAttribute('stroke-width', '2');
+            path.setAttribute('opacity', '0.7');
+          };
+          
+          mainGroup.appendChild(path);
+        }
+      });
+      
+      // Draw Alation-style table nodes
+      nodes.forEach(node => {
+        const group = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+        group.setAttribute('cursor', 'pointer');
+        
+        const nodeWidth = 200;
+        const nodeHeight = 80;
+        
+        // Create main table container - clean Alation style
+        const rect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+        rect.setAttribute('x', node.x - nodeWidth/2);
+        rect.setAttribute('y', node.y - nodeHeight/2);
+        rect.setAttribute('width', nodeWidth);
+        rect.setAttribute('height', nodeHeight);
+        rect.setAttribute('rx', '4');
+        rect.setAttribute('ry', '4');
+        rect.setAttribute('fill', 'url(#tableGradient)');
+        rect.setAttribute('stroke', '#d1d5db');
+        rect.setAttribute('stroke-width', '1');
+        rect.setAttribute('filter', 'drop-shadow(0 1px 3px rgba(0, 0, 0, 0.1))');
+        
+        // Header section for table name
+        const headerRect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+        headerRect.setAttribute('x', node.x - nodeWidth/2);
+        headerRect.setAttribute('y', node.y - nodeHeight/2);
+        headerRect.setAttribute('width', nodeWidth);
+        headerRect.setAttribute('height', 24);
+        headerRect.setAttribute('rx', '4');
+        headerRect.setAttribute('ry', '4');
+        headerRect.setAttribute('fill', node.layer === 0 ? 'url(#sourceGradient)' : 
+                               layers.length > 1 && node.layer === layers.length - 1 ? 'url(#targetGradient)' : 
+                               '#f1f5f9');
+        
+        // Table icon and name
+        const tableIcon = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+        tableIcon.setAttribute('x', node.x - nodeWidth/2 + 8);
+        tableIcon.setAttribute('y', node.y - nodeHeight/2 + 16);
+        tableIcon.setAttribute('font-family', 'Arial');
+        tableIcon.setAttribute('font-size', '12');
+        tableIcon.setAttribute('fill', '#64748b');
+        tableIcon.textContent = '📊';
+        
+        const title = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+        title.setAttribute('x', node.x - nodeWidth/2 + 28);
+        title.setAttribute('y', node.y - nodeHeight/2 + 16);
+        title.setAttribute('font-size', '13');
+        title.setAttribute('font-weight', '600');
+        title.setAttribute('fill', '#1e293b');
+        title.textContent = node.table_name || 'Unknown Table';
+        
+        // Connection name (database)
+        const connectionText = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+        connectionText.setAttribute('x', node.x - nodeWidth/2 + 8);
+        connectionText.setAttribute('y', node.y - nodeHeight/2 + 38);
+        connectionText.setAttribute('font-size', '11');
+        connectionText.setAttribute('fill', '#64748b');
+        connectionText.textContent = `📂 ${node.connection_name || 'Database'}`;
+        
+        // Record count
+        const recordText = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+        recordText.setAttribute('x', node.x - nodeWidth/2 + 8);
+        recordText.setAttribute('y', node.y - nodeHeight/2 + 54);
+        recordText.setAttribute('font-size', '10');
+        recordText.setAttribute('fill', '#94a3b8');
+        recordText.textContent = `${node.record_count?.toLocaleString() || 0} rows`;
+        
+        // Type indicator
+        const typeText = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+        typeText.setAttribute('x', node.x + nodeWidth/2 - 8);
+        typeText.setAttribute('y', node.y + nodeHeight/2 - 8);
+        typeText.setAttribute('font-size', '9');
+        typeText.setAttribute('font-weight', '500');
+        typeText.setAttribute('text-anchor', 'end');
+        typeText.setAttribute('fill', '#6366f1');
+        const layerType = node.layer === 0 ? 'Source' : 
+                         layers.length > 1 && node.layer === layers.length - 1 ? 'Target' : 'Transform';
+        typeText.textContent = layerType;
+        
+        // Hover and click effects
+        group.onmouseover = () => {
+          rect.setAttribute('stroke', '#3b82f6');
+          rect.setAttribute('stroke-width', '2');
+          rect.setAttribute('fill', '#f8fafc');
+        };
+        group.onmouseout = () => {
+          rect.setAttribute('stroke', '#d1d5db');
+          rect.setAttribute('stroke-width', '1');
+          rect.setAttribute('fill', 'url(#tableGradient)');
+        };
+        
+        group.onclick = (e) => {
+          e.stopPropagation();
+          setSelectedTable(node);
+          fetchImpactAnalysis(node.id);
+        };
+        
+        group.appendChild(rect);
+        group.appendChild(headerRect);
+        group.appendChild(tableIcon);
+        group.appendChild(title);
+        group.appendChild(connectionText);
+        group.appendChild(recordText);
+        group.appendChild(typeText);
+        mainGroup.appendChild(group);
+      });
+      
+      svg.appendChild(mainGroup);
+    }, [lineageData, zoomLevel, panX, panY]);
+    
+    if (isLoading) {
+      return (
+        <div className="p-6 space-y-6">
+          <div className="flex items-center justify-between">
+            <h2 className="text-2xl font-bold text-slate-800">Data Lineage</h2>
+          </div>
+          <div className="flex items-center justify-center h-64">
+            <div className="text-slate-500">Loading lineage data...</div>
+          </div>
+        </div>
+      );
+    }
     
     return (
       <div className="p-6 space-y-6">
         <div className="flex items-center justify-between">
           <h2 className="text-2xl font-bold text-slate-800">Data Lineage</h2>
           <div className="flex space-x-3">
-            <button className="px-4 py-2 border border-slate-200 rounded-lg hover:bg-slate-50">
-              Export
+            <div className="flex space-x-2 border border-slate-200 rounded-lg p-1">
+              <button 
+                onClick={handleZoomOut}
+                className="px-3 py-1 rounded-md hover:bg-slate-100 text-slate-600"
+                title="Zoom Out"
+              >
+                −
+              </button>
+              <span className="px-2 py-1 text-sm text-slate-600 min-w-[60px] text-center">
+                {Math.round(zoomLevel * 100)}%
+              </span>
+              <button 
+                onClick={handleZoomIn}
+                className="px-3 py-1 rounded-md hover:bg-slate-100 text-slate-600"
+                title="Zoom In"
+              >
+                +
+              </button>
+            </div>
+            <button 
+              onClick={discoverLineage}
+              className="px-4 py-2 border border-slate-200 rounded-lg hover:bg-slate-50"
+            >
+              Discover Lineage
             </button>
-            <button className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">
-              Trace Impact
+            <button 
+              onClick={fetchLineageData}
+              className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+            >
+              Refresh
             </button>
           </div>
         </div>
         
-        <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
-          <div className="flex items-center justify-between mb-4">
-            <h3 className="text-lg font-semibold text-slate-800">Lineage Graph</h3>
-            <div className="flex items-center space-x-4">
-              <div className="flex items-center space-x-2">
-                <div className="w-4 h-4 bg-green-500 rounded-full"></div>
-                <span className="text-sm text-slate-600">Source</span>
-              </div>
-              <div className="flex items-center space-x-2">
-                <div className="w-4 h-4 bg-yellow-500 rounded-full"></div>
-                <span className="text-sm text-slate-600">Transform</span>
-              </div>
-              <div className="flex items-center space-x-2">
-                <div className="w-4 h-4 bg-red-500 rounded-full"></div>
-                <span className="text-sm text-slate-600">Target</span>
-              </div>
-            </div>
+        {lineageData.nodes.length === 0 ? (
+          <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200 text-center">
+            <Database className="w-12 h-12 text-slate-400 mx-auto mb-4" />
+            <h3 className="text-lg font-semibold text-slate-800 mb-2">No lineage data found</h3>
+            <p className="text-slate-600 mb-4">
+              Connect to databases and click "Discover Lineage" to analyze table relationships
+            </p>
+            <button 
+              onClick={discoverLineage}
+              className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+            >
+              Discover Lineage
+            </button>
           </div>
-          <canvas 
-            ref={canvasRef}
-            className="w-full h-64 border border-slate-200 rounded-lg"
-          />
-        </div>
-        
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
-            <h3 className="text-lg font-semibold text-slate-800 mb-4">Upstream Dependencies</h3>
-            <div className="space-y-3">
-              {['users', 'user_profiles', 'user_sessions'].map(table => (
-                <div key={table} className="flex items-center space-x-3 p-3 border border-slate-200 rounded-lg">
-                  <Database className="w-5 h-5 text-green-500" />
-                  <div className="flex-1">
-                    <p className="font-medium text-slate-800">{table}</p>
-                    <p className="text-sm text-slate-600">Source table</p>
+        ) : (
+          <>
+            <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-lg font-semibold text-slate-800">Lineage Graph</h3>
+                <div className="flex items-center space-x-6">
+                  <div className="flex items-center space-x-2">
+                    <div className="flex items-center space-x-1">
+                      <div className="w-4 h-4 rounded-full bg-gradient-to-b from-green-400 to-green-600"></div>
+                      <span className="text-sm text-slate-600">🗃️ Source Tables</span>
+                    </div>
                   </div>
-                  <GitBranch className="w-4 h-4 text-slate-400" />
-                </div>
-              ))}
-            </div>
-          </div>
-          
-          <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
-            <h3 className="text-lg font-semibold text-slate-800 mb-4">Downstream Impact</h3>
-            <div className="space-y-3">
-              {['analytics_users', 'user_reports', 'dashboard_metrics'].map(table => (
-                <div key={table} className="flex items-center space-x-3 p-3 border border-slate-200 rounded-lg">
-                  <Database className="w-5 h-5 text-red-500" />
-                  <div className="flex-1">
-                    <p className="font-medium text-slate-800">{table}</p>
-                    <p className="text-sm text-slate-600">Target table</p>
+                  <div className="flex items-center space-x-2">
+                    <div className="flex items-center space-x-1">
+                      <div className="w-4 h-4 rounded-full bg-gradient-to-b from-yellow-400 to-yellow-600"></div>
+                      <span className="text-sm text-slate-600">⚙️ Transform</span>
+                    </div>
                   </div>
-                  <GitBranch className="w-4 h-4 text-slate-400" />
+                  <div className="flex items-center space-x-2">
+                    <div className="flex items-center space-x-1">
+                      <div className="w-4 h-4 rounded-full bg-gradient-to-b from-red-400 to-red-600"></div>
+                      <span className="text-sm text-slate-600">📊 Analytics</span>
+                    </div>
+                  </div>
                 </div>
-              ))}
+              </div>
+              <div className="relative">
+                <svg 
+                  ref={svgRef}
+                  className="w-full border border-slate-200 rounded-lg bg-gradient-to-br from-slate-50 to-white"
+                  style={{ height: '500px', cursor: isDragging ? 'grabbing' : 'grab' }}
+                  viewBox={`0 0 1200 500`}
+                  onMouseDown={handleMouseDown}
+                  onMouseMove={handleMouseMove}
+                  onMouseUp={handleMouseUp}
+                  onMouseLeave={handleMouseUp}
+                />
+                <div className="absolute top-4 right-4 flex space-x-2">
+                  <button className="p-2 bg-white border border-slate-200 rounded hover:bg-slate-50 text-sm">
+                    🔍 Zoom
+                  </button>
+                  <button className="p-2 bg-white border border-slate-200 rounded hover:bg-slate-50 text-sm">
+                    ⤢ Fit
+                  </button>
+                </div>
+                
+                {/* Minimap Overview Panel - Left-to-Right Layout */}
+                {lineageData.nodes.length > 0 && (
+                  <div className="absolute bottom-4 right-4 bg-white border border-slate-200 rounded-lg shadow-lg p-2">
+                    <div className="text-xs text-slate-500 mb-1 text-center">Overview</div>
+                    <svg 
+                      width="120" 
+                      height="80" 
+                      className="border border-slate-100 rounded bg-slate-50"
+                      viewBox="0 0 1200 600"
+                    >
+                      {/* Render minimap nodes in left-to-right layout */}
+                      {(() => {
+                        // Recreate the hierarchical layout for minimap
+                        const nodes = [...lineageData.nodes];
+                        const edges = [...lineageData.edges];
+                        
+                        // Calculate in-degree
+                        const inDegree = {};
+                        nodes.forEach(node => inDegree[node.id] = 0);
+                        edges.forEach(edge => inDegree[edge.target]++);
+                        
+                        // Create layers
+                        const layers = [];
+                        const processed = new Set();
+                        let currentLayer = nodes.filter(node => inDegree[node.id] === 0);
+                        if (currentLayer.length === 0) currentLayer = [nodes[0]];
+                        
+                        let layerIndex = 0;
+                        while (currentLayer.length > 0 && processed.size < nodes.length) {
+                          layers[layerIndex] = [...currentLayer];
+                          currentLayer.forEach(node => processed.add(node.id));
+                          
+                          const nextLayer = [];
+                          nodes.forEach(node => {
+                            if (!processed.has(node.id)) {
+                              const dependencies = edges.filter(e => e.target === node.id);
+                              if (dependencies.every(dep => processed.has(dep.source))) {
+                                nextLayer.push(node);
+                              }
+                            }
+                          });
+                          
+                          currentLayer = nextLayer;
+                          layerIndex++;
+                          if (layerIndex > nodes.length) break;
+                        }
+                        
+                        // Position nodes and render
+                        const layerWidth = 1200 / (layers.length + 1);
+                        const minimapNodes = [];
+                        
+                        layers.forEach((layer, layerIdx) => {
+                          const layerHeight = 600 / (layer.length + 1);
+                          layer.forEach((node, nodeIdx) => {
+                            const x = (layerIdx + 1) * layerWidth;
+                            const y = (nodeIdx + 1) * layerHeight;
+                            
+                            minimapNodes.push(
+                              <rect
+                                key={node.id}
+                                x={x - 15}
+                                y={y - 8}
+                                width="30"
+                                height="16"
+                                rx="2"
+                                fill={layerIdx === 0 ? '#3b82f6' : 
+                                      layerIdx === layers.length - 1 ? '#f59e0b' : '#6366f1'}
+                                stroke="#ffffff"
+                                strokeWidth="1"
+                                opacity="0.8"
+                              />
+                            );
+                          });
+                        });
+                        
+                        return minimapNodes;
+                      })()}
+                      
+                      {/* Render minimap connections */}
+                      {(() => {
+                        const connections = [];
+                        // Simplified connections for minimap
+                        lineageData.edges.forEach((edge, index) => {
+                          const startX = 100 + (index % 3) * 300;
+                          const endX = startX + 200;
+                          const y = 300;
+                          
+                          connections.push(
+                            <line
+                              key={`${edge.source}-${edge.target}`}
+                              x1={startX}
+                              y1={y}
+                              x2={endX}
+                              y2={y}
+                              stroke="#64748b"
+                              strokeWidth="2"
+                              opacity="0.4"
+                            />
+                          );
+                        });
+                        
+                        return connections;
+                      })()}
+                      
+                      {/* Viewport indicator */}
+                      <rect
+                        x={600 - (120 / zoomLevel)}
+                        y={300 - (60 / zoomLevel)}
+                        width={240 / zoomLevel}
+                        height={120 / zoomLevel}
+                        fill="none"
+                        stroke="#ef4444"
+                        strokeWidth="2"
+                        opacity="0.7"
+                      />
+                    </svg>
+                  </div>
+                )}
+              </div>
+              {selectedTable && (
+                <div className="mt-4 p-4 bg-blue-50 rounded-lg">
+                  <p className="text-sm text-blue-800">
+                    <strong>Selected:</strong> {selectedTable.name} 
+                    ({selectedTable.record_count?.toLocaleString()} records)
+                  </p>
+                </div>
+              )}
             </div>
-          </div>
-        </div>
+            
+            {impactData && (
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
+                  <h3 className="text-lg font-semibold text-slate-800 mb-4">
+                    Upstream Dependencies ({impactData.upstream_tables.length})
+                  </h3>
+                  <div className="space-y-3">
+                    {impactData.upstream_tables.length === 0 ? (
+                      <p className="text-slate-500 text-sm">No upstream dependencies found</p>
+                    ) : (
+                      impactData.upstream_tables.map(table => (
+                        <div key={table.id} className="flex items-center space-x-3 p-3 border border-slate-200 rounded-lg">
+                          <Database className="w-5 h-5 text-green-500" />
+                          <div className="flex-1">
+                            <p className="font-medium text-slate-800">{table.schema_name}.{table.name}</p>
+                            <p className="text-sm text-slate-600">{table.transformation_type}</p>
+                          </div>
+                          <GitBranch className="w-4 h-4 text-slate-400" />
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </div>
+                
+                <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
+                  <h3 className="text-lg font-semibold text-slate-800 mb-4">
+                    Downstream Impact ({impactData.downstream_tables.length})
+                  </h3>
+                  <div className="space-y-3">
+                    {impactData.downstream_tables.length === 0 ? (
+                      <p className="text-slate-500 text-sm">No downstream impact found</p>
+                    ) : (
+                      impactData.downstream_tables.map(table => (
+                        <div key={table.id} className="flex items-center space-x-3 p-3 border border-slate-200 rounded-lg">
+                          <Database className="w-5 h-5 text-red-500" />
+                          <div className="flex-1">
+                            <p className="font-medium text-slate-800">{table.schema_name}.{table.name}</p>
+                            <p className="text-sm text-slate-600">{table.transformation_type}</p>
+                          </div>
+                          <GitBranch className="w-4 h-4 text-slate-400" />
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
+          </>
+        )}
       </div>
     );
   };

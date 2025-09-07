@@ -181,6 +181,16 @@ async def refresh_connection(connection_id: int, db: DatabaseManager = Depends(g
             raise HTTPException(status_code=404, detail="Connection not found")
         
         result = await db.refresh_connection(connection_id)
+        
+        # Trigger lineage discovery after successful connection
+        if result["status"] == "connected":
+            try:
+                await db.discover_lineage_relationships(connection_id)
+                logger.info(f"Lineage discovery completed for connection {connection_id}")
+            except Exception as lineage_error:
+                logger.warning(f"Lineage discovery failed for connection {connection_id}: {lineage_error}")
+                # Don't fail the refresh if lineage discovery fails
+        
         return {
             "message": "Connection refreshed successfully", 
             "connection_id": connection_id,
@@ -404,6 +414,31 @@ async def get_impact_analysis(table_id: int, db: DatabaseManager = Depends(get_d
     except Exception as e:
         logger.error(f"Error fetching impact analysis: {e}")
         raise HTTPException(status_code=500, detail="Failed to fetch impact analysis")
+
+@app.post("/api/lineage/discover/{connection_id}")
+async def discover_lineage(connection_id: int, db: DatabaseManager = Depends(get_db)):
+    """Manually trigger lineage discovery for a connection"""
+    try:
+        connection = await db.get_connection(connection_id)
+        if not connection:
+            raise HTTPException(status_code=404, detail="Connection not found")
+        
+        if connection.status.value != "connected":
+            raise HTTPException(status_code=400, detail="Connection must be active to discover lineage")
+        
+        relationships = await db.discover_lineage_relationships(connection_id)
+        
+        return {
+            "message": "Lineage discovery completed",
+            "connection_id": connection_id,
+            "relationships_found": len(relationships),
+            "timestamp": datetime.now().isoformat()
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error discovering lineage: {e}")
+        raise HTTPException(status_code=500, detail="Failed to discover lineage relationships")
 
 # AI Agents Management Endpoints
 @app.get("/api/agents", response_model=List[AgentStatus])

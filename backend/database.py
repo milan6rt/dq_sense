@@ -579,21 +579,322 @@ class DatabaseManager:
         # Mock data for now
         return []
     
+    async def discover_lineage_relationships(self, connection_id: int):
+        """Discover lineage relationships through database introspection"""
+        async with self.metadata_pool.acquire() as meta_conn:
+            # Get connection details
+            connection_data = await meta_conn.fetchrow("""
+                SELECT host, port, database_name, username, password_hash
+                FROM data_connections WHERE id = $1
+            """, connection_id)
+            
+            if not connection_data:
+                return []
+            
+            # Connect to target database
+            target_conn = await asyncpg.connect(
+                host=connection_data['host'],
+                port=connection_data['port'],
+                database=connection_data['database_name'],
+                user=connection_data['username'],
+                password=connection_data['password_hash']
+            )
+            
+            try:
+                # Discover foreign key relationships
+                fk_relationships = await target_conn.fetch("""
+                    SELECT 
+                        tc.table_schema as source_schema,
+                        tc.table_name as source_table,
+                        kcu.column_name as source_column,
+                        ccu.table_schema as target_schema,
+                        ccu.table_name as target_table,
+                        ccu.column_name as target_column,
+                        tc.constraint_name
+                    FROM information_schema.table_constraints tc
+                    JOIN information_schema.key_column_usage kcu
+                        ON tc.constraint_name = kcu.constraint_name
+                        AND tc.table_schema = kcu.table_schema
+                    JOIN information_schema.constraint_column_usage ccu
+                        ON ccu.constraint_name = tc.constraint_name
+                        AND ccu.table_schema = tc.table_schema
+                    WHERE tc.constraint_type = 'FOREIGN KEY'
+                """)
+                
+                # Discover naming convention relationships (e.g., raw_* -> transformed tables)
+                naming_relationships = await self._discover_naming_patterns(target_conn, connection_id)
+                
+                # Store discovered relationships
+                lineage_relationships = []
+                
+                # Process FK relationships
+                for fk in fk_relationships:
+                    source_table_id = await self._get_table_id_by_name(
+                        connection_id, fk['source_schema'], fk['source_table']
+                    )
+                    target_table_id = await self._get_table_id_by_name(
+                        connection_id, fk['target_schema'], fk['target_table']
+                    )
+                    
+                    if source_table_id and target_table_id:
+                        lineage_relationships.append({
+                            'source_table_id': source_table_id,
+                            'target_table_id': target_table_id,
+                            'relationship_type': 'foreign_key',
+                            'source_column': fk['source_column'],
+                            'target_column': fk['target_column']
+                        })
+                
+                # Process naming convention relationships
+                lineage_relationships.extend(naming_relationships)
+                
+                # Store relationships in database
+                await self._store_lineage_relationships(lineage_relationships)
+                
+                return lineage_relationships
+                
+            finally:
+                await target_conn.close()
+    
+    async def _discover_naming_patterns(self, target_conn, connection_id):
+        """Discover relationships based on table naming patterns"""
+        relationships = []
+        
+        # Get all tables
+        tables = await target_conn.fetch("""
+            SELECT schemaname, tablename 
+            FROM pg_tables 
+            WHERE schemaname NOT IN ('information_schema', 'pg_catalog', 'pg_toast')
+        """)
+        
+        # Group tables by patterns
+        raw_tables = [t for t in tables if t['tablename'].startswith('raw_')]
+        summary_tables = [t for t in tables if 'summary' in t['tablename'] or 'analytics' in t['tablename']]
+        
+        # Infer relationships: raw_* tables -> summary/analytics tables
+        for raw_table in raw_tables:
+            base_name = raw_table['tablename'][4:]  # Remove 'raw_' prefix
+            
+            for summary_table in summary_tables:
+                # Check if base name appears in summary table name
+                if base_name.replace('_', '') in summary_table['tablename'].replace('_', ''):
+                    raw_table_id = await self._get_table_id_by_name(
+                        connection_id, raw_table['schemaname'], raw_table['tablename']
+                    )
+                    summary_table_id = await self._get_table_id_by_name(
+                        connection_id, summary_table['schemaname'], summary_table['tablename']
+                    )
+                    
+                    if raw_table_id and summary_table_id:
+                        relationships.append({
+                            'source_table_id': raw_table_id,
+                            'target_table_id': summary_table_id,
+                            'relationship_type': 'transformation',
+                            'transformation_logic': f'Aggregation/transformation from {raw_table["tablename"]}'
+                        })
+        
+        return relationships
+    
+    async def _get_table_id_by_name(self, connection_id, schema_name, table_name):
+        """Get table_id from metadata by schema and table name"""
+        async with self.metadata_pool.acquire() as conn:
+            table_id = await conn.fetchval("""
+                SELECT id FROM table_metadata 
+                WHERE connection_id = $1 AND schema_name = $2 AND name = $3
+            """, connection_id, schema_name, table_name)
+            return table_id
+    
+    async def _store_lineage_relationships(self, relationships):
+        """Store lineage relationships in the database"""
+        async with self.metadata_pool.acquire() as conn:
+            for rel in relationships:
+                # Check if relationship already exists
+                existing = await conn.fetchval("""
+                    SELECT id FROM data_lineage 
+                    WHERE source_table_id = $1 AND target_table_id = $2
+                """, rel['source_table_id'], rel['target_table_id'])
+                
+                if not existing:
+                    await conn.execute("""
+                        INSERT INTO data_lineage 
+                        (source_table_id, target_table_id, transformation_type, transformation_logic)
+                        VALUES ($1, $2, $3, $4)
+                    """, 
+                        rel['source_table_id'],
+                        rel['target_table_id'],
+                        rel.get('relationship_type', 'unknown'),
+                        rel.get('transformation_logic', '')
+                    )
+    
     async def get_table_lineage(self, table_id: int):
-        """Get lineage for a table"""
-        return {"nodes": [], "edges": []}
+        """Get lineage for a specific table"""
+        async with self.metadata_pool.acquire() as conn:
+            # Get the table info
+            table_info = await conn.fetchrow("""
+                SELECT tm.*, dc.name as connection_name
+                FROM table_metadata tm
+                JOIN data_connections dc ON tm.connection_id = dc.id
+                WHERE tm.id = $1
+            """, table_id)
+            
+            if not table_info:
+                return {"nodes": [], "edges": []}
+            
+            # Get upstream and downstream relationships
+            lineage_data = await conn.fetch("""
+                WITH RECURSIVE lineage_tree AS (
+                    -- Start with the target table
+                    SELECT tm.id, tm.name, tm.schema_name, tm.connection_id, 
+                           dc.name as connection_name, 0 as level, 'center' as node_type
+                    FROM table_metadata tm
+                    JOIN data_connections dc ON tm.connection_id = dc.id
+                    WHERE tm.id = $1
+                    
+                    UNION ALL
+                    
+                    -- Get upstream tables (sources)
+                    SELECT tm.id, tm.name, tm.schema_name, tm.connection_id,
+                           dc.name as connection_name, lt.level - 1 as level, 'source' as node_type
+                    FROM data_lineage dl
+                    JOIN table_metadata tm ON dl.source_table_id = tm.id
+                    JOIN data_connections dc ON tm.connection_id = dc.id
+                    JOIN lineage_tree lt ON dl.target_table_id = lt.id
+                    WHERE lt.level > -2  -- Limit depth
+                    
+                    UNION ALL
+                    
+                    -- Get downstream tables (targets)
+                    SELECT tm.id, tm.name, tm.schema_name, tm.connection_id,
+                           dc.name as connection_name, lt.level + 1 as level, 'target' as node_type
+                    FROM data_lineage dl
+                    JOIN table_metadata tm ON dl.target_table_id = tm.id
+                    JOIN data_connections dc ON tm.connection_id = dc.id
+                    JOIN lineage_tree lt ON dl.source_table_id = lt.id
+                    WHERE lt.level < 2  -- Limit depth
+                )
+                SELECT DISTINCT * FROM lineage_tree ORDER BY level, name
+            """, table_id)
+            
+            # Get edges/relationships
+            edges_data = await conn.fetch("""
+                SELECT dl.*, 
+                       tm1.name as source_table_name,
+                       tm2.name as target_table_name
+                FROM data_lineage dl
+                JOIN table_metadata tm1 ON dl.source_table_id = tm1.id
+                JOIN table_metadata tm2 ON dl.target_table_id = tm2.id
+                WHERE dl.source_table_id = $1 OR dl.target_table_id = $1
+            """, table_id)
+            
+            # Format nodes
+            nodes = []
+            for row in lineage_data:
+                nodes.append({
+                    'id': row['id'],
+                    'name': f"{row['schema_name']}.{row['name']}",
+                    'table_name': row['name'],
+                    'schema_name': row['schema_name'],
+                    'connection_name': row['connection_name'],
+                    'level': row['level'],
+                    'type': row['node_type']
+                })
+            
+            # Format edges
+            edges = []
+            for row in edges_data:
+                edges.append({
+                    'source': row['source_table_id'],
+                    'target': row['target_table_id'],
+                    'type': row['transformation_type'],
+                    'description': row['transformation_logic']
+                })
+            
+            return {"nodes": nodes, "edges": edges}
     
     async def get_overall_lineage(self):
-        """Get overall lineage graph"""
-        return {"nodes": [], "edges": []}
+        """Get complete lineage graph for all connected databases"""
+        async with self.metadata_pool.acquire() as conn:
+            # Get all tables from connected databases
+            nodes_data = await conn.fetch("""
+                SELECT tm.id, tm.name, tm.schema_name, tm.connection_id,
+                       dc.name as connection_name, tm.record_count
+                FROM table_metadata tm
+                JOIN data_connections dc ON tm.connection_id = dc.id
+                WHERE dc.status = 'connected'
+                ORDER BY tm.name
+            """)
+            
+            # Get all lineage relationships
+            edges_data = await conn.fetch("""
+                SELECT dl.*, 
+                       tm1.name as source_table_name,
+                       tm1.schema_name as source_schema,
+                       tm2.name as target_table_name,
+                       tm2.schema_name as target_schema
+                FROM data_lineage dl
+                JOIN table_metadata tm1 ON dl.source_table_id = tm1.id
+                JOIN table_metadata tm2 ON dl.target_table_id = tm2.id
+                JOIN data_connections dc1 ON tm1.connection_id = dc1.id
+                JOIN data_connections dc2 ON tm2.connection_id = dc2.id
+                WHERE dc1.status = 'connected' AND dc2.status = 'connected'
+            """)
+            
+            # Format nodes
+            nodes = []
+            for row in nodes_data:
+                node_type = 'source'
+                if 'summary' in row['name'] or 'analytics' in row['name']:
+                    node_type = 'target'
+                elif not row['name'].startswith('raw_'):
+                    node_type = 'transform'
+                
+                nodes.append({
+                    'id': row['id'],
+                    'name': f"{row['schema_name']}.{row['name']}",
+                    'table_name': row['name'],
+                    'schema_name': row['schema_name'],
+                    'connection_name': row['connection_name'],
+                    'record_count': row['record_count'],
+                    'type': node_type
+                })
+            
+            # Format edges
+            edges = []
+            for row in edges_data:
+                edges.append({
+                    'source': row['source_table_id'],
+                    'target': row['target_table_id'],
+                    'type': row['transformation_type'],
+                    'description': row['transformation_logic']
+                })
+            
+            return {"nodes": nodes, "edges": edges}
     
     async def get_upstream_tables(self, table_id: int):
-        """Get upstream tables"""
-        return []
+        """Get tables that feed into this table"""
+        async with self.metadata_pool.acquire() as conn:
+            upstream = await conn.fetch("""
+                SELECT tm.*, dc.name as connection_name, dl.transformation_type, dl.transformation_logic
+                FROM data_lineage dl
+                JOIN table_metadata tm ON dl.source_table_id = tm.id
+                JOIN data_connections dc ON tm.connection_id = dc.id
+                WHERE dl.target_table_id = $1
+            """, table_id)
+            
+            return [dict(row) for row in upstream]
     
     async def get_downstream_tables(self, table_id: int):
-        """Get downstream tables"""
-        return []
+        """Get tables that consume data from this table"""
+        async with self.metadata_pool.acquire() as conn:
+            downstream = await conn.fetch("""
+                SELECT tm.*, dc.name as connection_name, dl.transformation_type, dl.transformation_logic
+                FROM data_lineage dl
+                JOIN table_metadata tm ON dl.target_table_id = tm.id
+                JOIN data_connections dc ON tm.connection_id = dc.id
+                WHERE dl.source_table_id = $1
+            """, table_id)
+            
+            return [dict(row) for row in downstream]
     
     async def resolve_quality_issue(self, issue_id: int):
         """Mark a quality issue as resolved"""
