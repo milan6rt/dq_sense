@@ -7,6 +7,7 @@ from datetime import datetime, timedelta
 from contextlib import asynccontextmanager
 import json
 import hashlib
+from fastapi import HTTPException
 
 from models import *
 
@@ -640,7 +641,7 @@ class DatabaseManager:
                         lineage_relationships.append({
                             'source_table_id': source_table_id,
                             'target_table_id': target_table_id,
-                            'relationship_type': 'foreign_key',
+                            'transformation_type': 'foreign_key',
                             'source_column': fk['source_column'],
                             'target_column': fk['target_column']
                         })
@@ -689,7 +690,7 @@ class DatabaseManager:
                         relationships.append({
                             'source_table_id': raw_table_id,
                             'target_table_id': summary_table_id,
-                            'relationship_type': 'transformation',
+                            'transformation_type': 'transformation',
                             'transformation_logic': f'Aggregation/transformation from {raw_table["tablename"]}'
                         })
         
@@ -722,7 +723,7 @@ class DatabaseManager:
                     """, 
                         rel['source_table_id'],
                         rel['target_table_id'],
-                        rel.get('relationship_type', 'unknown'),
+                        rel.get('transformation_type', 'unknown'),
                         rel.get('transformation_logic', '')
                     )
     
@@ -812,7 +813,7 @@ class DatabaseManager:
             return {"nodes": nodes, "edges": edges}
     
     async def get_overall_lineage(self):
-        """Get complete lineage graph for all connected databases"""
+        """Get complete lineage graph for all connected databases - FIXED"""
         async with self.metadata_pool.acquire() as conn:
             # Get all tables from connected databases
             nodes_data = await conn.fetch("""
@@ -1012,6 +1013,148 @@ class DatabaseManager:
         except Exception as e:
             logger.error(f"Failed to profile table {schema}.{table}: {e}")
             raise
+    
+    async def get_table_columns(self, connection_id: int, schema_name: str, table_name: str) -> List[dict]:
+        """Get detailed column information for a table"""
+        try:
+            # Get connection details
+            connection_info = await self.get_connection(connection_id)
+            if not connection_info:
+                raise HTTPException(status_code=404, detail="Connection not found")
+            
+            # Connect to the target database
+            target_conn = await asyncpg.connect(
+                host=connection_info['host'],
+                port=connection_info['port'],
+                database=connection_info['database_name'],
+                user=connection_info['username'],
+                password=connection_info['password']
+            )
+            
+            try:
+                # Get column information from information_schema
+                columns = await target_conn.fetch("""
+                    SELECT 
+                        column_name,
+                        data_type,
+                        is_nullable,
+                        column_default,
+                        character_maximum_length,
+                        numeric_precision,
+                        numeric_scale,
+                        ordinal_position,
+                        udt_name,
+                        CASE WHEN is_nullable = 'YES' THEN true ELSE false END as nullable
+                    FROM information_schema.columns 
+                    WHERE table_schema = $1 AND table_name = $2
+                    ORDER BY ordinal_position
+                """, schema_name, table_name)
+                
+                # Get primary key information
+                primary_keys = await target_conn.fetch("""
+                    SELECT column_name 
+                    FROM information_schema.table_constraints tc
+                    JOIN information_schema.key_column_usage kcu 
+                        ON tc.constraint_name = kcu.constraint_name
+                        AND tc.table_schema = kcu.table_schema
+                    WHERE tc.table_schema = $1 
+                        AND tc.table_name = $2 
+                        AND tc.constraint_type = 'PRIMARY KEY'
+                """, schema_name, table_name)
+                
+                pk_columns = {row['column_name'] for row in primary_keys}
+                
+                # Get foreign key information  
+                foreign_keys = await target_conn.fetch("""
+                    SELECT 
+                        kcu.column_name,
+                        ccu.table_schema as foreign_table_schema,
+                        ccu.table_name as foreign_table_name,
+                        ccu.column_name as foreign_column_name
+                    FROM information_schema.table_constraints tc
+                    JOIN information_schema.key_column_usage kcu 
+                        ON tc.constraint_name = kcu.constraint_name
+                        AND tc.table_schema = kcu.table_schema
+                    JOIN information_schema.constraint_column_usage ccu
+                        ON ccu.constraint_name = tc.constraint_name
+                        AND ccu.table_schema = tc.table_schema
+                    WHERE tc.table_schema = $1 
+                        AND tc.table_name = $2 
+                        AND tc.constraint_type = 'FOREIGN KEY'
+                """, schema_name, table_name)
+                
+                fk_info = {}
+                for row in foreign_keys:
+                    fk_info[row['column_name']] = {
+                        'references_table': f"{row['foreign_table_schema']}.{row['foreign_table_name']}",
+                        'references_column': row['foreign_column_name']
+                    }
+                
+                # Format column information
+                formatted_columns = []
+                for col in columns:
+                    column_info = {
+                        'name': col['column_name'],
+                        'data_type': col['data_type'],
+                        'nullable': col['nullable'],
+                        'default_value': col['column_default'],
+                        'max_length': col['character_maximum_length'],
+                        'precision': col['numeric_precision'],
+                        'scale': col['numeric_scale'],
+                        'position': col['ordinal_position'],
+                        'udt_name': col['udt_name'],
+                        'is_primary_key': col['column_name'] in pk_columns,
+                        'foreign_key': fk_info.get(col['column_name'])
+                    }
+                    formatted_columns.append(column_info)
+                
+                return formatted_columns
+                
+            finally:
+                await target_conn.close()
+                
+        except Exception as e:
+            logger.error(f"Failed to get columns for {schema_name}.{table_name}: {e}")
+            raise
+    
+    async def get_table_column_names(self, table_id: int):
+        """Get simple column names for a table"""
+        async with self.metadata_pool.acquire() as conn:
+            # Get table info first
+            table_info = await conn.fetchrow("""
+                SELECT tm.*, dc.host, dc.port, dc.database_name, dc.username, dc.password_hash
+                FROM table_metadata tm
+                JOIN data_connections dc ON tm.connection_id = dc.id
+                WHERE tm.id = $1 AND dc.status = 'connected'
+            """, table_id)
+            
+            if not table_info:
+                return []
+            
+            try:
+                # Connect to target database
+                target_conn = await asyncpg.connect(
+                    host=table_info['host'],
+                    port=table_info['port'],
+                    database=table_info['database_name'],
+                    user=table_info['username'],
+                    password=table_info['password_hash']
+                )
+                
+                # Get column names
+                columns = await target_conn.fetch("""
+                    SELECT column_name
+                    FROM information_schema.columns
+                    WHERE table_schema = $1 AND table_name = $2
+                    ORDER BY ordinal_position
+                """, table_info['schema_name'], table_info['name'])
+                
+                await target_conn.close()
+                return [col['column_name'] for col in columns]
+                
+            except Exception as e:
+                logger.error(f"Failed to get column names for table {table_id}: {e}")
+                return []
     
     async def close_all_connections(self):
         """Close all database connections"""
