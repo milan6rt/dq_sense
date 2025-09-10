@@ -356,20 +356,19 @@ const DataIntelligencePlatform = () => {
     const currentPath = location.pathname;
     
     return (
-      <div className="w-72 bg-slate-800 text-white flex flex-col shadow-xl">
-        <div className="p-6 border-b border-slate-700">
+      <div className="w-64 bg-white flex flex-col shadow-lg border-r border-gray-200">
+        <div className="p-6 border-b border-gray-200">
           <div className="flex items-center space-x-3">
-            <div className="w-10 h-10 bg-blue-600 rounded-lg flex items-center justify-center">
-              <Database className="w-6 h-6 text-white" />
+            <div className="w-8 h-8 bg-orange-500 rounded-lg flex items-center justify-center">
+              <Database className="w-5 h-5 text-white" />
             </div>
             <div>
-              <h1 className="text-lg font-bold text-white">DataIQ Platform</h1>
-              <p className="text-xs text-slate-400">Multi-Agent Data Quality</p>
+              <h1 className="text-xl font-bold text-gray-900">DataIQ</h1>
             </div>
           </div>
         </div>
         
-        <nav className="flex-1 px-4 py-6 space-y-1">
+        <nav className="flex-1 px-3 py-4 space-y-1">
           {[
             { path: '/', icon: Home, label: 'Dashboard' },
             { path: '/catalog', icon: Layers, label: 'Data Catalog' },
@@ -384,18 +383,30 @@ const DataIntelligencePlatform = () => {
               <Link
                 key={path}
                 to={path}
-                className={`w-full flex items-center space-x-3 px-4 py-3 rounded-lg text-left transition-all duration-200 ${
+                className={`w-full flex items-center space-x-3 px-3 py-2.5 rounded-lg text-left transition-all duration-200 ${
                   isActive 
-                    ? 'bg-blue-600 text-white shadow-md' 
-                    : 'text-slate-300 hover:bg-slate-700 hover:text-white'
+                    ? 'bg-blue-50 text-blue-700 border-r-2 border-blue-700 font-medium' 
+                    : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
                 }`}
               >
-                <Icon className="w-5 h-5 flex-shrink-0" />
-                <span className="font-medium">{label}</span>
+                <Icon className={`w-5 h-5 flex-shrink-0 ${isActive ? 'text-blue-700' : 'text-gray-400'}`} />
+                <span className="font-medium text-sm">{label}</span>
               </Link>
             );
           })}
         </nav>
+        
+        <div className="px-3 py-4 border-t border-gray-200">
+          <div className="flex items-center space-x-3 px-3 py-2">
+            <div className="w-8 h-8 bg-gray-200 rounded-full flex items-center justify-center">
+              <User className="w-4 h-4 text-gray-600" />
+            </div>
+            <div className="flex-1">
+              <p className="text-sm font-medium text-gray-900">Admin User</p>
+              <p className="text-xs text-gray-500">admin@dataiq.com</p>
+            </div>
+          </div>
+        </div>
       </div>
     );
   };
@@ -429,14 +440,14 @@ const DataIntelligencePlatform = () => {
   );
 
   const Dashboard = () => (
-    <div className="p-6 space-y-6">
-      <div className="flex items-center justify-between">
+    <div className="p-8 bg-gray-50 min-h-full">
+      <div className="flex items-center justify-between mb-8">
         <div>
-          <h2 className="text-2xl font-bold text-slate-800">Data Intelligence Dashboard</h2>
-          <p className="text-slate-600">Real-time insights from your multi-agent data quality system</p>
+          <h1 className="text-3xl font-bold text-gray-900">Dashboard</h1>
+          <p className="text-gray-600 mt-1">Real-time insights from your multi-agent data quality system</p>
         </div>
         <div className="flex space-x-3">
-          <button onClick={fetchData} className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center space-x-2">
+          <button onClick={fetchData} className="px-4 py-2 bg-orange-500 text-white rounded-lg hover:bg-orange-600 flex items-center space-x-2 shadow-sm">
             <RefreshCw className="w-4 h-4" />
             <span>Refresh</span>
           </button>
@@ -445,13 +456,13 @@ const DataIntelligencePlatform = () => {
 
       {!connectionStatus.has_connected_db ? (
         // Empty state when no databases are connected
-        <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-12 text-center">
-          <Database className="w-16 h-16 text-slate-400 mx-auto mb-4" />
-          <h3 className="text-lg font-semibold text-slate-800 mb-2">No Database Connected</h3>
-          <p className="text-slate-600 mb-4">Connect to a database to see your data quality insights and metrics.</p>
+        <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-12 text-center">
+          <Database className="w-16 h-16 text-gray-400 mx-auto mb-4" />
+          <h3 className="text-lg font-semibold text-gray-800 mb-2">No Database Connected</h3>
+          <p className="text-gray-600 mb-4">Connect to a database to see your data quality insights and metrics.</p>
           <Link 
             to="/connections"
-            className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors inline-block"
+            className="px-6 py-2 bg-orange-500 text-white rounded-lg hover:bg-orange-600 transition-colors inline-block"
           >
             Go to Connections
           </Link>
@@ -459,97 +470,125 @@ const DataIntelligencePlatform = () => {
       ) : (
         <>
           {/* Stats Cards */}
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-        <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-slate-600 text-sm">Data Sources</p>
-              <p className="text-2xl font-bold text-slate-800">{connections.length}</p>
-              <p className="text-green-600 text-sm">↑ {connections.filter(c => c.status === 'connected').length} connected</p>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+            <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 hover:shadow-md transition-shadow">
+              <div className="flex items-start justify-between">
+                <div className="flex-1">
+                  <p className="text-gray-500 text-sm font-medium mb-2">Total Sources</p>
+                  <h3 className="text-3xl font-bold text-gray-900 mb-1">{connections.length}</h3>
+                  <div className="flex items-center text-sm">
+                    <span className="text-green-600 font-medium">+3.4%</span>
+                    <span className="text-gray-400 ml-1">vs last week</span>
+                  </div>
+                </div>
+                <div className="w-12 h-12 bg-orange-100 rounded-xl flex items-center justify-center">
+                  <Database className="w-6 h-6 text-orange-500" />
+                </div>
+              </div>
             </div>
-            <Database className="w-10 h-10 text-blue-500" />
-          </div>
-        </div>
 
-        <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-slate-600 text-sm">Data Quality Score</p>
-              <p className="text-2xl font-bold text-slate-800">91.3%</p>
-              <p className="text-green-600 text-sm">↑ 2.1% from last week</p>
+            <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 hover:shadow-md transition-shadow">
+              <div className="flex items-start justify-between">
+                <div className="flex-1">
+                  <p className="text-gray-500 text-sm font-medium mb-2">Total Tables</p>
+                  <h3 className="text-3xl font-bold text-gray-900 mb-1">{tables.length}</h3>
+                  <div className="flex items-center text-sm">
+                    <span className="text-red-600 font-medium">-2.8%</span>
+                    <span className="text-gray-400 ml-1">vs last week</span>
+                  </div>
+                </div>
+                <div className="w-12 h-12 bg-blue-100 rounded-xl flex items-center justify-center">
+                  <Layers className="w-6 h-6 text-blue-500" />
+                </div>
+              </div>
             </div>
-            <Target className="w-10 h-10 text-green-500" />
-          </div>
-        </div>
 
-        <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-slate-600 text-sm">Active Agents</p>
-              <p className="text-2xl font-bold text-slate-800">{agents.filter(a => a.status === 'active').length}</p>
-              <p className="text-blue-600 text-sm">Running continuously</p>
+            <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 hover:shadow-md transition-shadow">
+              <div className="flex items-start justify-between">
+                <div className="flex-1">
+                  <p className="text-gray-500 text-sm font-medium mb-2">Quality Score</p>
+                  <h3 className="text-3xl font-bold text-gray-900 mb-1">91.3%</h3>
+                  <div className="flex items-center text-sm">
+                    <span className="text-green-600 font-medium">+6.02%</span>
+                    <span className="text-gray-400 ml-1">vs last week</span>
+                  </div>
+                </div>
+                <div className="w-12 h-12 bg-green-100 rounded-xl flex items-center justify-center">
+                  <Target className="w-6 h-6 text-green-500" />
+                </div>
+              </div>
             </div>
-            <Bot className="w-10 h-10 text-purple-500" />
-          </div>
-        </div>
 
-        <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-slate-600 text-sm">Issues Detected</p>
-              <p className="text-2xl font-bold text-slate-800">{mockIssues.length}</p>
-              <p className="text-orange-600 text-sm">Requires attention</p>
+            <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 hover:shadow-md transition-shadow">
+              <div className="flex items-start justify-between">
+                <div className="flex-1">
+                  <p className="text-gray-500 text-sm font-medium mb-2">Active Agents</p>
+                  <h3 className="text-3xl font-bold text-gray-900 mb-1">{agents.filter(a => a.status === 'active').length}</h3>
+                  <div className="flex items-center text-sm">
+                    <span className="text-gray-600">Running continuously</span>
+                  </div>
+                </div>
+                <div className="w-12 h-12 bg-purple-100 rounded-xl flex items-center justify-center">
+                  <Bot className="w-6 h-6 text-purple-500" />
+                </div>
+              </div>
             </div>
-            <AlertTriangle className="w-10 h-10 text-orange-500" />
           </div>
-        </div>
-      </div>
 
       {/* Agent Activity & Data Quality */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
-          <div className="flex items-center justify-between mb-4">
-            <h3 className="text-lg font-semibold text-slate-800">Agent Activity Feed</h3>
-            <Activity className="w-5 h-5 text-slate-400" />
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
+        <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
+          <div className="flex items-center justify-between mb-6">
+            <h3 className="text-xl font-semibold text-gray-900">Agent Activity Feed</h3>
+            <div className="flex items-center text-sm text-gray-500">
+              <div className="w-2 h-2 bg-green-500 rounded-full mr-2"></div>
+              Live
+            </div>
           </div>
-          <div className="space-y-3 max-h-64 overflow-y-auto">
+          <div className="space-y-4 max-h-80 overflow-y-auto">
             {agentLogs.map(log => (
-              <div key={log.id} className="flex items-center space-x-3 p-3 bg-slate-50 rounded-lg">
-                <Bot className="w-4 h-4 text-blue-500 flex-shrink-0" />
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium text-slate-800 truncate">{log.agent}</p>
-                  <p className="text-xs text-slate-600">{log.activity}</p>
+              <div key={log.id} className="flex items-start space-x-3">
+                <div className="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5">
+                  <Bot className="w-4 h-4 text-blue-600" />
                 </div>
-                <span className="text-xs text-slate-400">{log.timestamp}</span>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium text-gray-900">{log.agent}</p>
+                  <p className="text-sm text-gray-600 mt-0.5">{log.activity}</p>
+                  <p className="text-xs text-gray-400 mt-1">{log.timestamp}</p>
+                </div>
               </div>
             ))}
           </div>
         </div>
 
-        <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
-          <div className="flex items-center justify-between mb-4">
-            <h3 className="text-lg font-semibold text-slate-800">Data Quality Issues</h3>
-            <AlertTriangle className="w-5 h-5 text-orange-500" />
+        <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
+          <div className="flex items-center justify-between mb-6">
+            <h3 className="text-xl font-semibold text-gray-900">Data Quality Issues</h3>
+            <Link to="/quality" className="text-sm text-orange-500 hover:text-orange-600 font-medium">
+              See All
+            </Link>
           </div>
-          <div className="space-y-3">
-            {mockIssues.map(issue => (
-              <div key={issue.id} className="flex items-center justify-between p-3 border border-slate-200 rounded-lg">
-                <div className="flex-1">
-                  <div className="flex items-center space-x-2 mb-1">
-                    <span className="text-sm font-medium text-slate-800">{issue.table}</span>
-                    <span className={`px-2 py-1 text-xs rounded-full ${
-                      issue.severity === 'high' ? 'bg-red-100 text-red-800' :
-                      issue.severity === 'medium' ? 'bg-orange-100 text-orange-800' :
-                      'bg-yellow-100 text-yellow-800'
-                    }`}>
-                      {issue.severity}
-                    </span>
+          <div className="space-y-4">
+            {mockIssues.slice(0, 3).map(issue => (
+              <div key={issue.id} className="p-4 border border-gray-200 rounded-lg hover:border-gray-300 transition-colors">
+                <div className="flex items-start justify-between">
+                  <div className="flex-1">
+                    <div className="flex items-center space-x-2 mb-2">
+                      <span className="font-medium text-gray-900">{issue.table}</span>
+                      <span className={`px-2 py-1 text-xs font-medium rounded-full ${
+                        issue.severity === 'high' ? 'bg-red-100 text-red-700' :
+                        issue.severity === 'medium' ? 'bg-orange-100 text-orange-700' :
+                        'bg-yellow-100 text-yellow-700'
+                      }`}>
+                        {issue.severity}
+                      </span>
+                    </div>
+                    <p className="text-sm text-gray-600">{issue.description}</p>
                   </div>
-                  <p className="text-xs text-slate-600">{issue.description}</p>
-                </div>
-                <div className="text-right">
-                  <p className="text-sm font-medium text-slate-800">{issue.count}</p>
-                  <p className="text-xs text-slate-600">records</p>
+                  <div className="text-right ml-4">
+                    <p className="text-lg font-semibold text-gray-900">{issue.count}</p>
+                    <p className="text-xs text-gray-500">records</p>
+                  </div>
                 </div>
               </div>
             ))}
@@ -558,47 +597,58 @@ const DataIntelligencePlatform = () => {
       </div>
 
       {/* Recent Tables */}
-      <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
-        <h3 className="text-lg font-semibold text-slate-800 mb-4">Recently Profiled Tables</h3>
+      <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
+        <div className="flex items-center justify-between mb-6">
+          <h3 className="text-xl font-semibold text-gray-900">Recently Profiled Tables</h3>
+          <Link to="/catalog" className="text-sm text-orange-500 hover:text-orange-600 font-medium">
+            View All
+          </Link>
+        </div>
         <div className="overflow-x-auto">
           <table className="w-full">
             <thead>
-              <tr className="border-b border-slate-200">
-                <th className="text-left py-3 px-4 font-medium text-slate-600">Table</th>
-                <th className="text-left py-3 px-4 font-medium text-slate-600">Connection</th>
-                <th className="text-left py-3 px-4 font-medium text-slate-600">Records</th>
-                <th className="text-left py-3 px-4 font-medium text-slate-600">Quality Score</th>
-                <th className="text-left py-3 px-4 font-medium text-slate-600">Last Profiled</th>
-                <th className="text-left py-3 px-4 font-medium text-slate-600">Popularity</th>
+              <tr className="border-b border-gray-200">
+                <th className="text-left py-4 px-4 font-semibold text-gray-900 text-sm">Table</th>
+                <th className="text-left py-4 px-4 font-semibold text-gray-900 text-sm">Connection</th>
+                <th className="text-left py-4 px-4 font-semibold text-gray-900 text-sm">Records</th>
+                <th className="text-left py-4 px-4 font-semibold text-gray-900 text-sm">Quality Score</th>
+                <th className="text-left py-4 px-4 font-semibold text-gray-900 text-sm">Last Profiled</th>
+                <th className="text-left py-4 px-4 font-semibold text-gray-900 text-sm">Popularity</th>
               </tr>
             </thead>
             <tbody>
               {tables.length === 0 ? (
                 <tr>
-                  <td colSpan="6" className="py-8 text-center text-slate-500">
-                    No tables available. Connect to a database to see your tables.
+                  <td colSpan="6" className="py-12 text-center text-gray-500">
+                    <Database className="w-12 h-12 text-gray-300 mx-auto mb-3" />
+                    <p className="font-medium">No tables available</p>
+                    <p className="text-sm">Connect to a database to see your tables.</p>
                   </td>
                 </tr>
               ) : (
                 tables.slice(0, 5).map(table => (
-                <tr key={table.id} className="border-b border-slate-100 hover:bg-slate-50">
-                  <td className="py-3 px-4">
+                <tr key={table.id} className="border-b border-gray-100 hover:bg-gray-50 transition-colors">
+                  <td className="py-4 px-4">
                     <div>
-                      <p className="font-medium text-slate-800">{table.schema}.{table.name}</p>
-                      <p className="text-sm text-slate-600">{table.description}</p>
+                      <p className="font-semibold text-gray-900">{table.name}</p>
+                      <p className="text-sm text-gray-500">{table.schema_name}</p>
                     </div>
                   </td>
-                  <td className="py-3 px-4 text-slate-600">{table.connection}</td>
-                  <td className="py-3 px-4 text-slate-600">{table.record_count ? table.record_count.toLocaleString() : '0'}</td>
-                  <td className="py-3 px-4">
-                    <div className="flex items-center space-x-2">
-                      <div className="w-12 bg-slate-200 rounded-full h-2">
+                  <td className="py-4 px-4">
+                    <span className="inline-flex px-2 py-1 bg-blue-100 text-blue-800 text-xs font-medium rounded-lg">
+                      {table.connection_name}
+                    </span>
+                  </td>
+                  <td className="py-4 px-4 font-semibold text-gray-900">{table.record_count ? table.record_count.toLocaleString() : '0'}</td>
+                  <td className="py-4 px-4">
+                    <div className="flex items-center space-x-3">
+                      <div className="w-16 bg-gray-200 rounded-full h-2">
                         <div 
-                          className={`h-2 rounded-full ${table.quality_score >= 90 ? 'bg-green-500' : table.quality_score >= 80 ? 'bg-yellow-500' : 'bg-red-500'}`}
+                          className={`h-2 rounded-full ${table.quality_score >= 90 ? 'bg-green-500' : table.quality_score >= 80 ? 'bg-orange-500' : 'bg-red-500'}`}
                           style={{ width: `${table.quality_score}%` }}
                         ></div>
                       </div>
-                      <span className="text-sm text-slate-600">{table.quality_score}%</span>
+                      <span className="text-sm font-medium text-gray-700">{table.quality_score}%</span>
                     </div>
                   </td>
                   <td className="py-3 px-4 text-slate-600">{table.lastProfiled}</td>
@@ -1427,7 +1477,7 @@ const DataIntelligencePlatform = () => {
 
   return (
     <Router>
-      <div className="min-h-screen bg-slate-50 flex">
+      <div className="min-h-screen bg-gray-100 flex">
         <Sidebar />
         <div className="flex-1 flex flex-col">
           <Header />
