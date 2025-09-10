@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { BrowserRouter as Router, Routes, Route, Link, useLocation } from 'react-router-dom';
 import AlationStyleLineage from './AlationStyleLineage';
 import { 
   Search, Database, Users, Activity, BarChart3, Network, Settings, 
@@ -71,7 +72,6 @@ const mockIssues = [
 ];
 
 const DataIntelligencePlatform = () => {
-  const [activeTab, setActiveTab] = useState('dashboard');
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedTable, setSelectedTable] = useState(null);
   const [agentLogs, setAgentLogs] = useState([]);
@@ -82,6 +82,7 @@ const DataIntelligencePlatform = () => {
   const [dashboardMetrics, setDashboardMetrics] = useState(null);
   const [tables, setTables] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [agentControlLoading, setAgentControlLoading] = useState({});
   const [connectionStatus, setConnectionStatus] = useState({ 
     has_connected_db: false, 
     connected: 0, 
@@ -172,6 +173,53 @@ const DataIntelligencePlatform = () => {
       setConnectionStatus({ has_connected_db: true, connected: 1, total_connections: 1 });
     } finally {
       setLoading(false);
+    }
+  };
+
+  // Agent control functions
+  const controlAgent = async (agentId, action) => {
+    try {
+      setAgentControlLoading(prev => ({ ...prev, [agentId]: true }));
+      
+      const response = await fetch(`${API_BASE}/agents/${agentId}/${action}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' }
+      });
+      
+      if (response.ok) {
+        // Refresh agents data after successful control action
+        const agentsResponse = await fetch(`${API_BASE}/agents`);
+        if (agentsResponse.ok) {
+          const agentsData = await agentsResponse.json();
+          setAgents(agentsData);
+        }
+      } else {
+        console.error(`Failed to ${action} agent:`, await response.text());
+      }
+    } catch (error) {
+      console.error(`Error ${action}ing agent:`, error);
+    } finally {
+      setAgentControlLoading(prev => ({ ...prev, [agentId]: false }));
+    }
+  };
+
+  // Fetch agent logs
+  const fetchAgentLogs = async (limit = 20) => {
+    try {
+      const response = await fetch(`${API_BASE}/agents/logs?limit=${limit}`);
+      if (response.ok) {
+        const logsData = await response.json();
+        const formattedLogs = logsData.map(log => ({
+          id: log.id,
+          agent: log.agent_id,
+          level: log.level,
+          activity: log.message,
+          timestamp: new Date(log.timestamp).toLocaleTimeString()
+        }));
+        setAgentLogs(formattedLogs);
+      }
+    } catch (error) {
+      console.error('Error fetching agent logs:', error);
     }
   };
 
@@ -290,66 +338,67 @@ const DataIntelligencePlatform = () => {
     return () => clearInterval(interval);
   }, []);
 
-  // Simulate agent activity
+  // Fetch real agent logs and set up real-time updates
   useEffect(() => {
+    // Initial load of agent logs
+    fetchAgentLogs();
+
+    // Set up periodic refresh for real-time updates
     const interval = setInterval(() => {
-      const agentNames = ['Data Profiler', 'Quality Validator', 'Lineage Tracker'];
-      const activities = ['Profiling table', 'Validating data', 'Tracking lineage', 'Detecting anomalies'];
-      
-      setAgentLogs(prev => [
-        ...prev.slice(-9),
-        {
-          id: Date.now(),
-          agent: agentNames[Math.floor(Math.random() * agentNames.length)],
-          activity: activities[Math.floor(Math.random() * activities.length)],
-          timestamp: new Date().toLocaleTimeString()
-        }
-      ]);
-    }, 3000);
+      fetchAgentLogs();
+    }, 5000); // Refresh every 5 seconds
 
     return () => clearInterval(interval);
   }, []);
 
-  const Sidebar = () => (
-    <div className="w-72 bg-slate-800 text-white flex flex-col shadow-xl">
-      <div className="p-6 border-b border-slate-700">
-        <div className="flex items-center space-x-3">
-          <div className="w-10 h-10 bg-blue-600 rounded-lg flex items-center justify-center">
-            <Database className="w-6 h-6 text-white" />
-          </div>
-          <div>
-            <h1 className="text-lg font-bold text-white">DataIQ Platform</h1>
-            <p className="text-xs text-slate-400">Multi-Agent Data Quality</p>
+  const Sidebar = () => {
+    const location = useLocation();
+    const currentPath = location.pathname;
+    
+    return (
+      <div className="w-72 bg-slate-800 text-white flex flex-col shadow-xl">
+        <div className="p-6 border-b border-slate-700">
+          <div className="flex items-center space-x-3">
+            <div className="w-10 h-10 bg-blue-600 rounded-lg flex items-center justify-center">
+              <Database className="w-6 h-6 text-white" />
+            </div>
+            <div>
+              <h1 className="text-lg font-bold text-white">DataIQ Platform</h1>
+              <p className="text-xs text-slate-400">Multi-Agent Data Quality</p>
+            </div>
           </div>
         </div>
+        
+        <nav className="flex-1 px-4 py-6 space-y-1">
+          {[
+            { path: '/', icon: Home, label: 'Dashboard' },
+            { path: '/catalog', icon: Layers, label: 'Data Catalog' },
+            { path: '/quality', icon: Target, label: 'Data Quality' },
+            { path: '/lineage', icon: Network, label: 'Lineage' },
+            { path: '/agents', icon: Bot, label: 'AI Agents' },
+            { path: '/governance', icon: Shield, label: 'Governance' },
+            { path: '/connections', icon: Database, label: 'Connections' }
+          ].map(({ path, icon: Icon, label }) => {
+            const isActive = (path === '/' && currentPath === '/') || (path !== '/' && currentPath === path);
+            return (
+              <Link
+                key={path}
+                to={path}
+                className={`w-full flex items-center space-x-3 px-4 py-3 rounded-lg text-left transition-all duration-200 ${
+                  isActive 
+                    ? 'bg-blue-600 text-white shadow-md' 
+                    : 'text-slate-300 hover:bg-slate-700 hover:text-white'
+                }`}
+              >
+                <Icon className="w-5 h-5 flex-shrink-0" />
+                <span className="font-medium">{label}</span>
+              </Link>
+            );
+          })}
+        </nav>
       </div>
-      
-      <nav className="flex-1 px-4 py-6 space-y-1">
-        {[
-          { id: 'dashboard', icon: Home, label: 'Dashboard' },
-          { id: 'catalog', icon: Layers, label: 'Data Catalog' },
-          { id: 'quality', icon: Target, label: 'Data Quality' },
-          { id: 'lineage', icon: Network, label: 'Lineage' },
-          { id: 'agents', icon: Bot, label: 'AI Agents' },
-          { id: 'governance', icon: Shield, label: 'Governance' },
-          { id: 'connections', icon: Database, label: 'Connections' }
-        ].map(({ id, icon: Icon, label }) => (
-          <button
-            key={id}
-            onClick={() => setActiveTab(id)}
-            className={`w-full flex items-center space-x-3 px-4 py-3 rounded-lg text-left transition-all duration-200 ${
-              activeTab === id 
-                ? 'bg-blue-600 text-white shadow-md' 
-                : 'text-slate-300 hover:bg-slate-700 hover:text-white'
-            }`}
-          >
-            <Icon className="w-5 h-5 flex-shrink-0" />
-            <span className="font-medium">{label}</span>
-          </button>
-        ))}
-      </nav>
-    </div>
-  );
+    );
+  };
 
   const Header = () => (
     <div className="bg-white border-b border-slate-200 px-8 py-4 flex items-center justify-between shadow-sm">
@@ -400,12 +449,12 @@ const DataIntelligencePlatform = () => {
           <Database className="w-16 h-16 text-slate-400 mx-auto mb-4" />
           <h3 className="text-lg font-semibold text-slate-800 mb-2">No Database Connected</h3>
           <p className="text-slate-600 mb-4">Connect to a database to see your data quality insights and metrics.</p>
-          <button 
-            onClick={() => setActiveTab('connections')}
-            className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+          <Link 
+            to="/connections"
+            className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors inline-block"
           >
             Go to Connections
-          </button>
+          </Link>
         </div>
       ) : (
         <>
@@ -437,7 +486,7 @@ const DataIntelligencePlatform = () => {
           <div className="flex items-center justify-between">
             <div>
               <p className="text-slate-600 text-sm">Active Agents</p>
-              <p className="text-2xl font-bold text-slate-800">{mockAgents.filter(a => a.status === 'active').length}</p>
+              <p className="text-2xl font-bold text-slate-800">{agents.filter(a => a.status === 'active').length}</p>
               <p className="text-blue-600 text-sm">Running continuously</p>
             </div>
             <Bot className="w-10 h-10 text-purple-500" />
@@ -944,7 +993,7 @@ const DataIntelligencePlatform = () => {
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        {mockAgents.map(agent => (
+        {agents.map(agent => (
           <div key={agent.id} className="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
             <div className="flex items-center justify-between mb-4">
               <div className="flex items-center space-x-3">
@@ -952,8 +1001,16 @@ const DataIntelligencePlatform = () => {
                 <h3 className="font-semibold text-slate-800">{agent.name}</h3>
               </div>
               <div className="flex space-x-2">
-                <button className="p-2 hover:bg-slate-100 rounded">
-                  {agent.status === 'active' ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4" />}
+                <button 
+                  onClick={() => controlAgent(agent.id, agent.status === 'active' ? 'stop' : 'start')}
+                  disabled={agentControlLoading[agent.id]}
+                  className="p-2 hover:bg-slate-100 rounded disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {agentControlLoading[agent.id] ? (
+                    <div className="w-4 h-4 border-2 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
+                  ) : (
+                    agent.status === 'active' ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4" />
+                  )}
                 </button>
                 <button className="p-2 hover:bg-slate-100 rounded">
                   <Settings className="w-4 h-4" />
@@ -974,12 +1031,22 @@ const DataIntelligencePlatform = () => {
               </div>
               <div className="flex justify-between">
                 <span className="text-slate-600">Last Run:</span>
-                <span>{agent.lastRun}</span>
+                <span>{agent.last_run || 'Never'}</span>
               </div>
               <div className="flex justify-between">
                 <span className="text-slate-600">Tasks Completed:</span>
-                <span className="font-medium">{agent.tasksCompleted}</span>
+                <span className="font-medium">{agent.tasks_completed}</span>
               </div>
+              <div className="flex justify-between">
+                <span className="text-slate-600">Uptime:</span>
+                <span className="text-sm">{agent.uptime}</span>
+              </div>
+              {agent.tasks_failed > 0 && (
+                <div className="flex justify-between">
+                  <span className="text-slate-600">Tasks Failed:</span>
+                  <span className="text-red-600 font-medium">{agent.tasks_failed}</span>
+                </div>
+              )}
             </div>
           </div>
         ))}
@@ -1057,11 +1124,17 @@ const DataIntelligencePlatform = () => {
             </div>
           </div>
           <div className="flex space-x-2">
-            <button className="px-3 py-1 bg-slate-100 text-slate-700 rounded text-xs hover:bg-slate-200">
+            <button 
+              onClick={() => setAgentLogs([])}
+              className="px-3 py-1 bg-slate-100 text-slate-700 rounded text-xs hover:bg-slate-200"
+            >
               Clear
             </button>
-            <button className="px-3 py-1 bg-slate-100 text-slate-700 rounded text-xs hover:bg-slate-200">
-              Download
+            <button 
+              onClick={() => fetchAgentLogs()}
+              className="px-3 py-1 bg-slate-100 text-slate-700 rounded text-xs hover:bg-slate-200"
+            >
+              Refresh
             </button>
           </div>
         </div>
@@ -1352,37 +1425,26 @@ const DataIntelligencePlatform = () => {
     </div>
   );
 
-  const renderActiveTab = () => {
-    switch (activeTab) {
-      case 'dashboard':
-        return <Dashboard />;
-      case 'catalog':
-        return <DataCatalog />;
-      case 'quality':
-        return <QualityTab />;
-      case 'lineage':
-        return <AlationStyleLineage key="lineage-component" />;
-      case 'agents':
-        return <AgentsTab />;
-      case 'governance':
-        return <GovernanceTab />;
-      case 'connections':
-        return <ConnectionsTab />;
-      default:
-        return <Dashboard />;
-    }
-  };
-
   return (
-    <div className="min-h-screen bg-slate-50 flex">
-      <Sidebar />
-      <div className="flex-1 flex flex-col">
-        <Header />
-        <main className="flex-1 overflow-y-auto">
-          {renderActiveTab()}
-        </main>
+    <Router>
+      <div className="min-h-screen bg-slate-50 flex">
+        <Sidebar />
+        <div className="flex-1 flex flex-col">
+          <Header />
+          <main className="flex-1 overflow-y-auto">
+            <Routes>
+              <Route path="/" element={<Dashboard />} />
+              <Route path="/catalog" element={<DataCatalog />} />
+              <Route path="/quality" element={<QualityTab />} />
+              <Route path="/lineage" element={<AlationStyleLineage key="lineage-component" />} />
+              <Route path="/agents" element={<AgentsTab />} />
+              <Route path="/governance" element={<GovernanceTab />} />
+              <Route path="/connections" element={<ConnectionsTab />} />
+            </Routes>
+          </main>
+        </div>
       </div>
-    </div>
+    </Router>
   );
 };
 
