@@ -26,7 +26,7 @@ const AlationStyleLineage = () => {
     const fetchData = async () => {
       setLoading(true);
       try {
-        const response = await fetch('http://localhost:8000/api/lineage/alation-style');
+        const response = await fetch('http://localhost:8001/api/lineage/alation-style');
         if (response.ok) {
           const data = await response.json();
           setLineageData(data);
