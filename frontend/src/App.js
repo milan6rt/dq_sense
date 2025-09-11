@@ -1,12 +1,12 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import { BrowserRouter as Router, Routes, Route, Link, useLocation } from 'react-router-dom';
 import AlationStyleLineage from './AlationStyleLineage';
 import { 
-  Search, Database, Users, Activity, BarChart3, Network, Settings, 
-  Plus, Star, MessageCircle, Eye, GitBranch, CheckCircle, AlertTriangle,
-  Clock, TrendingUp, Zap, Bot, Shield, FileText, Filter, ChevronDown,
-  ChevronRight, Play, Pause, RefreshCw, Download, Upload, Share2,
-  Bell, User, Menu, X, Home, Layers, Target, Workflow
+  Search, Database, Network, Settings, 
+  Star, CheckCircle, AlertTriangle,
+  TrendingUp, Zap, Bot, Shield, Filter,
+  Play, Pause, RefreshCw, Plus,
+  Bell, User, X, Home, Layers, Target
 } from 'lucide-react';
 
 // Mock data for demonstration
@@ -79,7 +79,6 @@ const DataIntelligencePlatform = () => {
   // Real API data state
   const [connections, setConnections] = useState([]);
   const [agents, setAgents] = useState([]);
-  const [dashboardMetrics, setDashboardMetrics] = useState(null);
   const [tables, setTables] = useState([]);
   const [loading, setLoading] = useState(true);
   const [agentControlLoading, setAgentControlLoading] = useState({});
@@ -148,8 +147,8 @@ const DataIntelligencePlatform = () => {
         // Fetch dashboard metrics
         const metricsResponse = await fetch(`${API_BASE}/dashboard/metrics`);
         if (metricsResponse.ok) {
-          const metricsData = await metricsResponse.json();
-          setDashboardMetrics(metricsData);
+          await metricsResponse.json();
+          // Dashboard metrics fetched but not used in current implementation
         }
 
         // Fetch tables from connected databases  
@@ -160,7 +159,6 @@ const DataIntelligencePlatform = () => {
         }
       } else {
         // Clear all database-dependent data when no databases are connected
-        setDashboardMetrics(null);
         setTables([]);
       }
 
@@ -317,9 +315,8 @@ const DataIntelligencePlatform = () => {
       if (response.ok) {
         // Refresh the connections list
         await fetchData();
-        const result = await response.json();
+        await response.json();
         // You could show a toast notification here instead of alert
-        // alert(result.message);
       } else {
         const errorData = await response.json();
         alert(`Failed to refresh: ${errorData.detail || 'Unknown error'}`);
@@ -356,19 +353,17 @@ const DataIntelligencePlatform = () => {
     const currentPath = location.pathname;
     
     return (
-      <div className="w-64 bg-white flex flex-col shadow-lg border-r border-gray-200">
-        <div className="p-6 border-b border-gray-200">
-          <div className="flex items-center space-x-3">
-            <div className="w-8 h-8 bg-orange-500 rounded-lg flex items-center justify-center">
-              <Database className="w-5 h-5 text-white" />
+      <div className="w-64 bg-white flex flex-col shadow-lg border-r border-gray-100">
+        <div className="p-4 border-b border-gray-100">
+          <div className="flex items-center space-x-2">
+            <div className="w-8 h-8 bg-gradient-to-br from-orange-500 to-orange-600 rounded-lg flex items-center justify-center">
+              <Database className="w-4 h-4 text-white" />
             </div>
-            <div>
-              <h1 className="text-xl font-bold text-gray-900">DataIQ</h1>
-            </div>
+            <h1 className="text-lg font-bold text-gray-900">DataSignals<span className="text-orange-500">.ai</span></h1>
           </div>
         </div>
         
-        <nav className="flex-1 px-3 py-4 space-y-1">
+        <nav className="flex-1 px-2 py-2">
           {[
             { path: '/', icon: Home, label: 'Dashboard' },
             { path: '/catalog', icon: Layers, label: 'Data Catalog' },
@@ -383,27 +378,27 @@ const DataIntelligencePlatform = () => {
               <Link
                 key={path}
                 to={path}
-                className={`w-full flex items-center space-x-3 px-3 py-2.5 rounded-lg text-left transition-all duration-200 ${
+                className={`w-full flex items-center space-x-3 px-4 py-3 rounded-xl text-left transition-all duration-200 mb-1 ${
                   isActive 
-                    ? 'bg-blue-50 text-blue-700 border-r-2 border-blue-700 font-medium' 
-                    : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
+                    ? 'bg-blue-600 text-white shadow-lg font-bold' 
+                    : 'text-gray-700 hover:bg-blue-50 hover:text-blue-700 font-medium'
                 }`}
               >
-                <Icon className={`w-5 h-5 flex-shrink-0 ${isActive ? 'text-blue-700' : 'text-gray-400'}`} />
-                <span className="font-medium text-sm">{label}</span>
+                <Icon className={`w-5 h-5 flex-shrink-0 ${isActive ? 'text-white' : 'text-gray-800'}`} />
+                <span className="font-semibold text-sm">{label}</span>
               </Link>
             );
           })}
         </nav>
         
-        <div className="px-3 py-4 border-t border-gray-200">
-          <div className="flex items-center space-x-3 px-3 py-2">
+        <div className="px-4 py-4 border-t border-gray-100">
+          <div className="flex items-center space-x-3">
             <div className="w-8 h-8 bg-gray-200 rounded-full flex items-center justify-center">
               <User className="w-4 h-4 text-gray-600" />
             </div>
             <div className="flex-1">
               <p className="text-sm font-medium text-gray-900">Admin User</p>
-              <p className="text-xs text-gray-500">admin@dataiq.com</p>
+              <p className="text-xs text-gray-500">admin@datasignals.ai</p>
             </div>
           </div>
         </div>
@@ -428,10 +423,10 @@ const DataIntelligencePlatform = () => {
       
       <div className="flex items-center space-x-4">
         <button className="p-2 hover:bg-slate-100 rounded-lg relative">
-          <Bell className="w-5 h-5" />
+          <Bell className="w-5 h-5 text-gray-700" />
           <span className="absolute -top-1 -right-1 w-3 h-3 bg-red-500 rounded-full"></span>
         </button>
-        <button className="flex items-center space-x-2 p-2 hover:bg-slate-100 rounded-lg">
+        <button className="flex items-center space-x-2 p-2 hover:bg-slate-100 rounded-lg text-gray-700">
           <User className="w-5 h-5" />
           <span>Admin User</span>
         </button>
@@ -444,10 +439,10 @@ const DataIntelligencePlatform = () => {
       <div className="flex items-center justify-between mb-8">
         <div>
           <h1 className="text-3xl font-bold text-gray-900">Dashboard</h1>
-          <p className="text-gray-600 mt-1">Real-time insights from your multi-agent data quality system</p>
+          <p className="text-gray-600 mt-1">Real-time insights from <span className="text-orange-600 font-semibold">DataSignals.ai</span></p>
         </div>
         <div className="flex space-x-3">
-          <button onClick={fetchData} className="px-4 py-2 bg-orange-500 text-white rounded-lg hover:bg-orange-600 flex items-center space-x-2 shadow-sm">
+          <button onClick={fetchData} className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center space-x-2 shadow-lg hover:shadow-xl transition-all duration-200 font-semibold border-2 border-blue-600 hover:border-blue-700">
             <RefreshCw className="w-4 h-4" />
             <span>Refresh</span>
           </button>
@@ -471,65 +466,65 @@ const DataIntelligencePlatform = () => {
         <>
           {/* Stats Cards */}
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-            <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 hover:shadow-md transition-shadow">
+            <div className="bg-gradient-to-br from-orange-50 to-orange-100 p-6 rounded-2xl shadow-lg border border-orange-200 hover:shadow-xl transition-all duration-300 hover:scale-105">
               <div className="flex items-start justify-between">
                 <div className="flex-1">
-                  <p className="text-gray-500 text-sm font-medium mb-2">Total Sources</p>
-                  <h3 className="text-3xl font-bold text-gray-900 mb-1">{connections.length}</h3>
+                  <p className="text-orange-700 text-sm font-semibold mb-2 uppercase tracking-wide">Total Sources</p>
+                  <h3 className="text-4xl font-bold text-orange-900 mb-1">{connections.length}</h3>
                   <div className="flex items-center text-sm">
-                    <span className="text-green-600 font-medium">+3.4%</span>
-                    <span className="text-gray-400 ml-1">vs last week</span>
+                    <span className="text-orange-600 font-medium">+3.4%</span>
+                    <span className="text-orange-500 ml-1">vs last week</span>
                   </div>
                 </div>
-                <div className="w-12 h-12 bg-orange-100 rounded-xl flex items-center justify-center">
-                  <Database className="w-6 h-6 text-orange-500" />
+                <div className="w-14 h-14 bg-blue-600 rounded-2xl flex items-center justify-center shadow-lg border-2 border-blue-500">
+                  <Database className="w-7 h-7 text-white" />
                 </div>
               </div>
             </div>
 
-            <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 hover:shadow-md transition-shadow">
+            <div className="bg-white p-6 rounded-2xl shadow-lg border border-gray-100 hover:shadow-xl transition-all duration-300 hover:scale-105">
               <div className="flex items-start justify-between">
                 <div className="flex-1">
-                  <p className="text-gray-500 text-sm font-medium mb-2">Total Tables</p>
-                  <h3 className="text-3xl font-bold text-gray-900 mb-1">{tables.length}</h3>
+                  <p className="text-gray-600 text-sm font-semibold mb-2 uppercase tracking-wide">Total Tables</p>
+                  <h3 className="text-4xl font-bold text-gray-900 mb-1">{tables.length}</h3>
                   <div className="flex items-center text-sm">
-                    <span className="text-red-600 font-medium">-2.8%</span>
+                    <span className="text-orange-600 font-medium">-2.8%</span>
                     <span className="text-gray-400 ml-1">vs last week</span>
                   </div>
                 </div>
-                <div className="w-12 h-12 bg-blue-100 rounded-xl flex items-center justify-center">
-                  <Layers className="w-6 h-6 text-blue-500" />
+                <div className="w-14 h-14 bg-green-600 rounded-2xl flex items-center justify-center shadow-lg border-2 border-green-500">
+                  <Layers className="w-7 h-7 text-white" />
                 </div>
               </div>
             </div>
 
-            <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 hover:shadow-md transition-shadow">
+            <div className="bg-white p-6 rounded-2xl shadow-lg border border-gray-100 hover:shadow-xl transition-all duration-300 hover:scale-105">
               <div className="flex items-start justify-between">
                 <div className="flex-1">
-                  <p className="text-gray-500 text-sm font-medium mb-2">Quality Score</p>
-                  <h3 className="text-3xl font-bold text-gray-900 mb-1">91.3%</h3>
+                  <p className="text-gray-600 text-sm font-semibold mb-2 uppercase tracking-wide">Quality Score</p>
+                  <h3 className="text-4xl font-bold text-gray-900 mb-1">91.3%</h3>
                   <div className="flex items-center text-sm">
-                    <span className="text-green-600 font-medium">+6.02%</span>
+                    <span className="text-orange-600 font-medium">+6.02%</span>
                     <span className="text-gray-400 ml-1">vs last week</span>
                   </div>
                 </div>
-                <div className="w-12 h-12 bg-green-100 rounded-xl flex items-center justify-center">
-                  <Target className="w-6 h-6 text-green-500" />
+                <div className="w-14 h-14 bg-red-600 rounded-2xl flex items-center justify-center shadow-lg border-2 border-red-500">
+                  <CheckCircle className="w-7 h-7 text-white" />
                 </div>
               </div>
             </div>
 
-            <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 hover:shadow-md transition-shadow">
+            <div className="bg-white p-6 rounded-2xl shadow-lg border border-gray-100 hover:shadow-xl transition-all duration-300 hover:scale-105">
               <div className="flex items-start justify-between">
                 <div className="flex-1">
-                  <p className="text-gray-500 text-sm font-medium mb-2">Active Agents</p>
-                  <h3 className="text-3xl font-bold text-gray-900 mb-1">{agents.filter(a => a.status === 'active').length}</h3>
+                  <p className="text-gray-600 text-sm font-semibold mb-2 uppercase tracking-wide">Active Agents</p>
+                  <h3 className="text-4xl font-bold text-gray-900 mb-1">{agents.filter(a => a.status === 'active').length}</h3>
                   <div className="flex items-center text-sm">
-                    <span className="text-gray-600">Running continuously</span>
+                    <span className="text-orange-600 font-medium">Running continuously</span>
                   </div>
                 </div>
-                <div className="w-12 h-12 bg-purple-100 rounded-xl flex items-center justify-center">
-                  <Bot className="w-6 h-6 text-purple-500" />
+                <div className="w-14 h-14 bg-purple-600 rounded-2xl flex items-center justify-center shadow-lg border-2 border-purple-500">
+                  <Bot className="w-7 h-7 text-white" />
                 </div>
               </div>
             </div>
@@ -879,59 +874,53 @@ const DataIntelligencePlatform = () => {
   const QualityTab = () => (
     <div className="p-6 space-y-6">
       <div className="flex items-center justify-between">
-        <h2 className="text-2xl font-bold text-slate-800">Data Quality Dashboard</h2>
-        <button className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center space-x-2">
+        <h2 className="text-2xl font-bold text-gray-900">Data Quality Dashboard</h2>
+        <button className="px-4 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 flex items-center space-x-2">
           <Zap className="w-4 h-4" />
           <span>Run Quality Check</span>
         </button>
       </div>
 
-      {/* Quality Metrics */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
-          <div className="flex items-center justify-between mb-4">
-            <h3 className="text-lg font-semibold text-slate-800">Overall Quality</h3>
-            <Target className="w-6 h-6 text-green-500" />
-          </div>
-          <div className="text-center">
-            <div className="text-4xl font-bold text-slate-800 mb-2">91.3%</div>
-            <p className="text-slate-600">Across all tables</p>
-            <div className="w-full bg-slate-200 rounded-full h-2 mt-3">
-              <div className="bg-green-500 h-2 rounded-full" style={{ width: '91.3%' }}></div>
+        <div className="bg-white p-6 rounded-lg shadow-sm border border-slate-200">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center space-x-3">
+              <div className="w-12 h-12 bg-orange-100 rounded-lg flex items-center justify-center">
+                <Target className="w-6 h-6 text-orange-600" />
+              </div>
+              <div>
+                <p className="text-sm text-gray-600">Overall Quality</p>
+                <p className="text-2xl font-bold text-gray-900">91.3%</p>
+              </div>
             </div>
           </div>
         </div>
 
-        <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
-          <div className="flex items-center justify-between mb-4">
-            <h3 className="text-lg font-semibold text-slate-800">Issues Found</h3>
-            <AlertTriangle className="w-6 h-6 text-orange-500" />
-          </div>
-          <div className="space-y-2">
-            <div className="flex justify-between">
-              <span className="text-red-600">Critical:</span>
-              <span className="font-bold">2</span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-orange-600">Warning:</span>
-              <span className="font-bold">7</span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-yellow-600">Info:</span>
-              <span className="font-bold">12</span>
+        <div className="bg-white p-6 rounded-lg shadow-sm border border-slate-200">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center space-x-3">
+              <div className="w-12 h-12 bg-red-100 rounded-lg flex items-center justify-center">
+                <AlertTriangle className="w-6 h-6 text-red-600" />
+              </div>
+              <div>
+                <p className="text-sm text-gray-600">Issues Found</p>
+                <p className="text-2xl font-bold text-gray-900">21</p>
+              </div>
             </div>
           </div>
         </div>
 
-        <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
-          <div className="flex items-center justify-between mb-4">
-            <h3 className="text-lg font-semibold text-slate-800">Trend</h3>
-            <TrendingUp className="w-6 h-6 text-blue-500" />
-          </div>
-          <div className="text-center">
-            <div className="text-2xl font-bold text-green-600 mb-2">+2.1%</div>
-            <p className="text-slate-600">vs last week</p>
-            <p className="text-sm text-green-600 mt-1">Quality improving</p>
+        <div className="bg-white p-6 rounded-lg shadow-sm border border-slate-200">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center space-x-3">
+              <div className="w-12 h-12 bg-green-100 rounded-lg flex items-center justify-center">
+                <TrendingUp className="w-6 h-6 text-green-600" />
+              </div>
+              <div>
+                <p className="text-sm text-gray-600">Quality Trend</p>
+                <p className="text-2xl font-bold text-green-600">+2.1%</p>
+              </div>
+            </div>
           </div>
         </div>
       </div>
@@ -1035,9 +1024,12 @@ const DataIntelligencePlatform = () => {
   const AgentsTab = () => (
     <div className="p-6 space-y-6">
       <div className="flex items-center justify-between">
-        <h2 className="text-2xl font-bold text-slate-800">AI Agents Management</h2>
-        <button className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center space-x-2">
-          <Plus className="w-4 h-4" />
+        <div>
+          <h2 className="text-2xl font-bold text-gray-900">AI Agents</h2>
+          <p className="text-gray-600 mt-1">Manage your autonomous data quality agents</p>
+        </div>
+        <button className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center space-x-2 shadow-lg hover:shadow-xl transition-all duration-200 font-semibold border-2 border-blue-600 hover:border-blue-700">
+          <Bot className="w-4 h-4" />
           <span>Deploy Agent</span>
         </button>
       </div>
@@ -1196,12 +1188,15 @@ const DataIntelligencePlatform = () => {
     return (
     <div className="p-6 space-y-6">
       <div className="flex items-center justify-between">
-        <h2 className="text-2xl font-bold text-slate-800">Data Connections</h2>
+        <div>
+          <h2 className="text-2xl font-bold text-gray-900">Data Connections</h2>
+          <p className="text-gray-600 mt-1">Manage your database connections</p>
+        </div>
         <button 
           onClick={() => setShowConnectionForm(!showConnectionForm)}
-          className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center space-x-2"
+          className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center space-x-2 shadow-lg hover:shadow-xl transition-all duration-200 font-semibold border-2 border-blue-600 hover:border-blue-700"
         >
-          <Plus className="w-4 h-4" />
+          <Database className="w-4 h-4" />
           <span>{showConnectionForm ? 'Cancel' : 'New Connection'}</span>
         </button>
       </div>
@@ -1361,14 +1356,16 @@ const DataIntelligencePlatform = () => {
   const GovernanceTab = () => (
     <div className="p-6 space-y-6">
       <div className="flex items-center justify-between">
-        <h2 className="text-2xl font-bold text-slate-800">Data Governance</h2>
-        <button className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center space-x-2">
+        <div>
+          <h2 className="text-2xl font-bold text-gray-900">Data Governance</h2>
+          <p className="text-gray-600 mt-1">Manage policies and compliance</p>
+        </div>
+        <button className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center space-x-2 shadow-lg hover:shadow-xl transition-all duration-200 font-semibold border-2 border-blue-600 hover:border-blue-700">
           <Shield className="w-4 h-4" />
-          <span>Create Policy</span>
+          <span>New Policy</span>
         </button>
       </div>
 
-      {/* Governance Overview */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
           <div className="flex items-center justify-between mb-4">

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { Filter, Settings, Plus, Minus, Maximize2, Eye, BarChart3, Database, Move, ZoomIn, ZoomOut, RotateCcw } from 'lucide-react';
+import { Filter, Maximize2, Database, ZoomIn, ZoomOut, RotateCcw } from 'lucide-react';
 
 const AlationStyleLineage = () => {
   const [selectedColumn, setSelectedColumn] = useState('customer_id');
@@ -53,7 +53,7 @@ const AlationStyleLineage = () => {
     };
     
     fetchData();
-  }, []);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Mouse event handlers
   const handleMouseDown = useCallback((e) => {
@@ -163,38 +163,6 @@ const AlationStyleLineage = () => {
     }
   }, [transform]);
 
-  // Calculate content bounds for dynamic sizing
-  const getContentBounds = useCallback((tables = lineageData.tables) => {
-    if (!tables || tables.length === 0) return { width: 800, height: 600, minX: 0, minY: 0, maxX: 800, maxY: 600 };
-    
-    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-    
-    tables.forEach(table => {
-      if (!table?.position) return;
-      
-      const x = table.position.x;
-      const y = table.position.y;
-      const width = 240;
-      const height = expandedTables.includes(table.id) 
-        ? Math.max(120, (table.columns?.length || 0) * 20 + 60) 
-        : 80;
-      
-      minX = Math.min(minX, x);
-      minY = Math.min(minY, y);
-      maxX = Math.max(maxX, x + width);
-      maxY = Math.max(maxY, y + height);
-    });
-    
-    const padding = 100;
-    return {
-      minX: minX - padding,
-      minY: minY - padding,
-      maxX: maxX + padding,
-      maxY: maxY + padding,
-      width: maxX - minX + (padding * 2),
-      height: maxY - minY + (padding * 2)
-    };
-  }, [lineageData.tables, expandedTables]);
 
   // Fit to view - ensure all content is visible
   const fitToView = useCallback((tables = lineageData.tables) => {
