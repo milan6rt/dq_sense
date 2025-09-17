@@ -81,6 +81,7 @@ const DataIntelligencePlatform = () => {
   const [agents, setAgents] = useState([]);
   const [tables, setTables] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [dashboardMetrics, setDashboardMetrics] = useState(null);
   const [agentControlLoading, setAgentControlLoading] = useState({});
   const [connectionStatus, setConnectionStatus] = useState({ 
     has_connected_db: false, 
@@ -147,8 +148,8 @@ const DataIntelligencePlatform = () => {
         // Fetch dashboard metrics
         const metricsResponse = await fetch(`${API_BASE}/dashboard/metrics`);
         if (metricsResponse.ok) {
-          await metricsResponse.json();
-          // Dashboard metrics fetched but not used in current implementation
+          const metricsData = await metricsResponse.json();
+          setDashboardMetrics(metricsData);
         }
 
         // Fetch tables from connected databases  
@@ -326,6 +327,28 @@ const DataIntelligencePlatform = () => {
     }
   }
 
+  // Refresh quality scores
+  const refreshQualityScores = async () => {
+    try {
+      const response = await fetch(`${API_BASE}/dashboard/refresh-quality`, {
+        method: 'POST',
+      });
+      
+      if (response.ok) {
+        const result = await response.json();
+        alert(result.message || 'Quality score refresh initiated. This may take a few moments.');
+        // Refresh the dashboard after a short delay
+        setTimeout(() => fetchData(), 2000);
+      } else {
+        const errorData = await response.json();
+        alert(`Failed to refresh quality scores: ${errorData.detail || 'Unknown error'}`);
+      }
+    } catch (error) {
+      console.error('Error refreshing quality scores:', error);
+      alert('Failed to refresh quality scores');
+    }
+  };
+
   // Initial data fetch
   useEffect(() => {
     fetchData();
@@ -446,6 +469,10 @@ const DataIntelligencePlatform = () => {
             <RefreshCw className="w-4 h-4" />
             <span>Refresh</span>
           </button>
+          <button onClick={refreshQualityScores} className="px-6 py-3 bg-orange-600 text-white rounded-lg hover:bg-orange-700 flex items-center space-x-2 shadow-lg hover:shadow-xl transition-all duration-200 font-semibold border-2 border-orange-600 hover:border-orange-700">
+            <Target className="w-4 h-4" />
+            <span>Refresh Quality</span>
+          </button>
         </div>
       </div>
 
@@ -470,7 +497,7 @@ const DataIntelligencePlatform = () => {
               <div className="flex items-start justify-between">
                 <div className="flex-1">
                   <p className="text-orange-700 text-sm font-semibold mb-2 uppercase tracking-wide">Total Sources</p>
-                  <h3 className="text-4xl font-bold text-orange-900 mb-1">{connections.length}</h3>
+                  <h3 className="text-4xl font-bold text-orange-900 mb-1">{dashboardMetrics?.total_connections || connections.length}</h3>
                   <div className="flex items-center text-sm">
                     <span className="text-orange-600 font-medium">+3.4%</span>
                     <span className="text-orange-500 ml-1">vs last week</span>
@@ -486,7 +513,7 @@ const DataIntelligencePlatform = () => {
               <div className="flex items-start justify-between">
                 <div className="flex-1">
                   <p className="text-gray-600 text-sm font-semibold mb-2 uppercase tracking-wide">Total Tables</p>
-                  <h3 className="text-4xl font-bold text-gray-900 mb-1">{tables.length}</h3>
+                  <h3 className="text-4xl font-bold text-gray-900 mb-1">{dashboardMetrics?.total_tables || tables.length}</h3>
                   <div className="flex items-center text-sm">
                     <span className="text-orange-600 font-medium">-2.8%</span>
                     <span className="text-gray-400 ml-1">vs last week</span>
@@ -502,7 +529,7 @@ const DataIntelligencePlatform = () => {
               <div className="flex items-start justify-between">
                 <div className="flex-1">
                   <p className="text-gray-600 text-sm font-semibold mb-2 uppercase tracking-wide">Quality Score</p>
-                  <h3 className="text-4xl font-bold text-gray-900 mb-1">91.3%</h3>
+                  <h3 className="text-4xl font-bold text-gray-900 mb-1">{dashboardMetrics?.average_quality_score || 0}%</h3>
                   <div className="flex items-center text-sm">
                     <span className="text-orange-600 font-medium">+6.02%</span>
                     <span className="text-gray-400 ml-1">vs last week</span>
@@ -518,7 +545,7 @@ const DataIntelligencePlatform = () => {
               <div className="flex items-start justify-between">
                 <div className="flex-1">
                   <p className="text-gray-600 text-sm font-semibold mb-2 uppercase tracking-wide">Active Agents</p>
-                  <h3 className="text-4xl font-bold text-gray-900 mb-1">{agents.filter(a => a.status === 'active').length}</h3>
+                  <h3 className="text-4xl font-bold text-gray-900 mb-1">{dashboardMetrics?.active_agents || agents.filter(a => a.status === 'active').length}</h3>
                   <div className="flex items-center text-sm">
                     <span className="text-orange-600 font-medium">Running continuously</span>
                   </div>

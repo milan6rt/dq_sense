@@ -67,30 +67,25 @@ async def health_check():
 # Dashboard Endpoints
 @app.get("/api/dashboard/metrics", response_model=DashboardMetrics)
 async def get_dashboard_metrics(db: DatabaseManager = Depends(get_db)):
-    """Get dashboard metrics and statistics"""
+    """Get dashboard metrics and statistics with real quality calculations"""
     try:
-        connections = await db.get_connections()
-        tables = await db.get_all_tables()
+        # Get enhanced metrics with trends
+        metrics_data = await db.get_dashboard_metrics_with_trends()
         agents = agent_orchestrator.get_agent_status()
-        issues = await db.get_quality_issues()
         
-        # Calculate metrics
-        active_connections = len([c for c in connections if c.get('status') == "connected"])
-        total_records = sum(table.get('record_count', 0) if isinstance(table, dict) else table.record_count for table in tables)
-        avg_quality = sum(table.get('quality_score', 0) if isinstance(table, dict) else table.quality_score for table in tables) / len(tables) if tables else 0
+        # Calculate active agents
         active_agents = len([a for a in agents if (a.get('status') if isinstance(a, dict) else a.status) == "active"])
-        critical_issues = len([i for i in issues if (i.get('severity') if isinstance(i, dict) else i.severity) == "high"])
         
         return DashboardMetrics(
-            total_connections=len(connections),
-            active_connections=active_connections,
-            total_tables=len(tables),
-            total_records=total_records,
-            average_quality_score=round(avg_quality, 1),
+            total_connections=metrics_data['total_connections'],
+            active_connections=metrics_data['active_connections'],
+            total_tables=metrics_data['total_tables'],
+            total_records=metrics_data['total_records'],
+            average_quality_score=metrics_data['average_quality_score'],
             active_agents=active_agents,
-            total_issues=len(issues),
-            critical_issues=critical_issues,
-            last_updated=datetime.now()
+            total_issues=metrics_data['total_issues'],
+            critical_issues=metrics_data['critical_issues'],
+            last_updated=metrics_data['last_updated']
         )
     except Exception as e:
         logger.error(f"Error fetching dashboard metrics: {e}")
@@ -104,6 +99,19 @@ async def get_agent_activity():
     except Exception as e:
         logger.error(f"Error fetching agent activity: {e}")
         raise HTTPException(status_code=500, detail="Failed to fetch agent activity")
+
+@app.post("/api/dashboard/refresh-quality")
+async def refresh_quality_scores(background_tasks: BackgroundTasks, db: DatabaseManager = Depends(get_db)):
+    """Manually trigger quality score recalculation for all tables"""
+    try:
+        background_tasks.add_task(db.update_all_table_quality_scores)
+        return {
+            "message": "Quality score refresh initiated for all tables", 
+            "timestamp": datetime.now().isoformat()
+        }
+    except Exception as e:
+        logger.error(f"Error initiating quality refresh: {e}")
+        raise HTTPException(status_code=500, detail="Failed to initiate quality refresh")
 
 # Connection Management Endpoints
 @app.get("/api/connections", response_model=List[DatabaseConnection])

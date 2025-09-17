@@ -10,6 +10,7 @@ import hashlib
 from fastapi import HTTPException
 
 from models import *
+from quality_calculator import QualityCalculator
 
 logger = logging.getLogger(__name__)
 
@@ -142,6 +143,25 @@ class DatabaseManager:
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 )
+            """)
+            
+            # Create historical metrics table for tracking trends
+            await conn.execute("""
+                CREATE TABLE IF NOT EXISTS historical_metrics (
+                    id SERIAL PRIMARY KEY,
+                    metric_type VARCHAR(50) NOT NULL, -- 'dashboard', 'table_quality', 'connection_status'
+                    entity_id INTEGER, -- table_id, connection_id, or NULL for dashboard
+                    metric_name VARCHAR(100) NOT NULL,
+                    metric_value FLOAT NOT NULL,
+                    additional_data JSONB,
+                    recorded_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
+            
+            # Create index for faster historical queries
+            await conn.execute("""
+                CREATE INDEX IF NOT EXISTS idx_historical_metrics_lookup 
+                ON historical_metrics(metric_type, entity_id, metric_name, recorded_at DESC)
             """)
             
             logger.info("Metadata tables created successfully")
@@ -1155,6 +1175,242 @@ class DatabaseManager:
             except Exception as e:
                 logger.error(f"Failed to get column names for table {table_id}: {e}")
                 return []
+    
+    async def update_table_quality_score(self, table_id: int) -> bool:
+        """Calculate and update real quality score for a table"""
+        try:
+            async with self.metadata_pool.acquire() as conn:
+                # Get table information
+                table_info = await conn.fetchrow("""
+                    SELECT tm.id, tm.connection_id, tm.schema_name, tm.name, tm.quality_score,
+                           dc.host, dc.port, dc.database_name, dc.username, dc.password_hash
+                    FROM table_metadata tm
+                    JOIN data_connections dc ON tm.connection_id = dc.id
+                    WHERE tm.id = $1 AND dc.status = 'connected'
+                """, table_id)
+                
+                if not table_info:
+                    logger.warning(f"Table {table_id} not found or connection not active")
+                    return False
+                
+                # Get or create the connection pool for this database
+                connection_key = f"{table_info['host']}:{table_info['port']}:{table_info['database_name']}"
+                
+                if connection_key not in self.connections_pool:
+                    # Create connection pool on-demand
+                    try:
+                        import asyncpg
+                        target_pool = await asyncpg.create_pool(
+                            host=table_info['host'],
+                            port=table_info['port'],
+                            user=table_info['username'],
+                            password='admin',  # Use actual password
+                            database=table_info['database_name'],
+                            min_size=1,
+                            max_size=5
+                        )
+                        self.connections_pool[connection_key] = target_pool
+                        logger.info(f"Created connection pool for {connection_key}")
+                    except Exception as pool_error:
+                        logger.error(f"Failed to create connection pool for {connection_key}: {pool_error}")
+                        return False
+                else:
+                    target_pool = self.connections_pool[connection_key]
+                
+                # Calculate quality score using the QualityCalculator
+                quality_score, detailed_metrics = await QualityCalculator.calculate_table_quality_score(
+                    target_pool, 
+                    table_info['connection_id'],
+                    table_info['schema_name'],
+                    table_info['name']
+                )
+                
+                # Store previous score for trend calculation
+                previous_score = table_info['quality_score']
+                
+                # Update table metadata with new quality score
+                await conn.execute("""
+                    UPDATE table_metadata 
+                    SET quality_score = $1, 
+                        record_count = $2,
+                        last_profiled = CURRENT_TIMESTAMP,
+                        updated_at = CURRENT_TIMESTAMP
+                    WHERE id = $3
+                """, quality_score, detailed_metrics.get('record_count', 0), table_id)
+                
+                # Store historical metric for trend tracking
+                await self.store_historical_metric(
+                    'table_quality',
+                    table_id,
+                    'quality_score',
+                    quality_score,
+                    detailed_metrics
+                )
+                
+                # Detect and store quality issues
+                issues = await QualityCalculator.detect_quality_issues(
+                    target_pool,
+                    table_info['connection_id'],
+                    table_info['schema_name'],
+                    table_info['name'],
+                    table_id
+                )
+                
+                # Clear old issues for this table
+                await conn.execute("""
+                    UPDATE quality_issues 
+                    SET is_resolved = TRUE, resolved_at = CURRENT_TIMESTAMP
+                    WHERE table_id = $1 AND is_resolved = FALSE
+                """, table_id)
+                
+                # Insert new issues
+                for issue in issues:
+                    await conn.execute("""
+                        INSERT INTO quality_issues 
+                        (table_id, issue_type, severity, description, affected_records, detected_at)
+                        VALUES ($1, $2, $3, $4, $5, CURRENT_TIMESTAMP)
+                    """, table_id, issue['issue_type'], issue['severity'], 
+                         issue['description'], issue['affected_records'])
+                
+                logger.info(f"Quality score updated for table {table_id}: {quality_score}% ({len(issues)} issues detected)")
+                return True
+                
+        except Exception as e:
+            logger.error(f"Error updating quality score for table {table_id}: {e}")
+            return False
+    
+    async def store_historical_metric(
+        self, 
+        metric_type: str, 
+        entity_id: Optional[int], 
+        metric_name: str, 
+        metric_value: float,
+        additional_data: Optional[Dict[str, Any]] = None
+    ):
+        """Store a historical metric for trend tracking"""
+        try:
+            async with self.metadata_pool.acquire() as conn:
+                await conn.execute("""
+                    INSERT INTO historical_metrics 
+                    (metric_type, entity_id, metric_name, metric_value, additional_data)
+                    VALUES ($1, $2, $3, $4, $5)
+                """, metric_type, entity_id, metric_name, metric_value, 
+                     json.dumps(additional_data) if additional_data else None)
+        except Exception as e:
+            logger.error(f"Error storing historical metric: {e}")
+    
+    async def get_historical_metric_trend(
+        self, 
+        metric_type: str, 
+        entity_id: Optional[int], 
+        metric_name: str, 
+        days_back: int = 7
+    ) -> Optional[float]:
+        """Get trend percentage for a metric comparing current vs historical"""
+        try:
+            async with self.metadata_pool.acquire() as conn:
+                # Get current and historical values
+                rows = await conn.fetch("""
+                    SELECT metric_value, recorded_at
+                    FROM historical_metrics
+                    WHERE metric_type = $1 AND entity_id = $2 AND metric_name = $3
+                        AND recorded_at >= CURRENT_TIMESTAMP - INTERVAL '%d days'
+                    ORDER BY recorded_at DESC
+                    LIMIT 50
+                """ % days_back, metric_type, entity_id, metric_name)
+                
+                if len(rows) < 2:
+                    return None  # Need at least 2 data points
+                
+                current_value = rows[0]['metric_value']
+                # Get average of historical values (excluding the most recent)
+                historical_values = [row['metric_value'] for row in rows[1:]]
+                historical_avg = sum(historical_values) / len(historical_values)
+                
+                if historical_avg == 0:
+                    return None
+                
+                trend_percentage = ((current_value - historical_avg) / historical_avg) * 100
+                return round(trend_percentage, 2)
+                
+        except Exception as e:
+            logger.error(f"Error calculating trend for {metric_type}.{metric_name}: {e}")
+            return None
+    
+    async def update_all_table_quality_scores(self) -> Dict[str, int]:
+        """Update quality scores for all tables in connected databases"""
+        results = {'updated': 0, 'failed': 0}
+        
+        try:
+            async with self.metadata_pool.acquire() as conn:
+                # Get all tables from connected databases
+                tables = await conn.fetch("""
+                    SELECT tm.id
+                    FROM table_metadata tm
+                    JOIN data_connections dc ON tm.connection_id = dc.id
+                    WHERE dc.status = 'connected'
+                """)
+                
+                for table_row in tables:
+                    success = await self.update_table_quality_score(table_row['id'])
+                    if success:
+                        results['updated'] += 1
+                    else:
+                        results['failed'] += 1
+                
+        except Exception as e:
+            logger.error(f"Error updating all quality scores: {e}")
+        
+        return results
+    
+    async def get_dashboard_metrics_with_trends(self) -> Dict[str, Any]:
+        """Get dashboard metrics with trend calculations"""
+        try:
+            connections = await self.get_connections()
+            tables = await self.get_all_tables()
+            issues = await self.get_quality_issues()
+            
+            # Calculate current metrics
+            active_connections = len([c for c in connections if c.get('status') == "connected"])
+            total_records = sum(table.get('record_count', 0) if isinstance(table, dict) else table.record_count for table in tables)
+            
+            if tables:
+                avg_quality = sum(table.get('quality_score', 0) if isinstance(table, dict) else table.quality_score for table in tables) / len(tables)
+            else:
+                avg_quality = 0
+            
+            critical_issues = len([i for i in issues if (i.get('severity') if isinstance(i, dict) else i.severity) == "high"])
+            
+            # Calculate trends
+            quality_trend = await self.get_historical_metric_trend('dashboard', None, 'avg_quality_score', 7)
+            connections_trend = await self.get_historical_metric_trend('dashboard', None, 'total_connections', 7)
+            issues_trend = await self.get_historical_metric_trend('dashboard', None, 'total_issues', 7)
+            
+            # Store current metrics as historical data
+            await self.store_historical_metric('dashboard', None, 'avg_quality_score', avg_quality)
+            await self.store_historical_metric('dashboard', None, 'total_connections', len(connections))
+            await self.store_historical_metric('dashboard', None, 'total_issues', len(issues))
+            await self.store_historical_metric('dashboard', None, 'critical_issues', critical_issues)
+            
+            return {
+                'total_connections': len(connections),
+                'active_connections': active_connections,
+                'total_tables': len(tables),
+                'total_records': total_records,
+                'average_quality_score': round(avg_quality, 1),
+                'total_issues': len(issues),
+                'critical_issues': critical_issues,
+                'trends': {
+                    'quality_trend': quality_trend,
+                    'connections_trend': connections_trend,
+                    'issues_trend': issues_trend
+                },
+                'last_updated': datetime.now()
+            }
+            
+        except Exception as e:
+            logger.error(f"Error getting dashboard metrics with trends: {e}")
+            raise
     
     async def close_all_connections(self):
         """Close all database connections"""
