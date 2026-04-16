@@ -1,4 +1,33 @@
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback, Component } from "react";
+
+// ─── ERROR BOUNDARY ───────────────────────────────────────────────────────────
+class ErrorBoundary extends Component {
+  constructor(props) { super(props); this.state = { error: null }; }
+  static getDerivedStateFromError(error) { return { error }; }
+  componentDidCatch(error, info) { console.error("ErrorBoundary caught:", error, info); }
+  render() {
+    if (this.state.error) {
+      return (
+        <div className="flex-1 flex items-center justify-center bg-slate-50 p-8">
+          <div className="bg-white rounded-2xl border border-red-200 shadow-sm p-8 max-w-md text-center">
+            <div className="w-12 h-12 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
+              <span className="text-red-600 text-xl">⚠</span>
+            </div>
+            <h3 className="text-lg font-semibold text-slate-900 mb-2">Something went wrong</h3>
+            <p className="text-sm text-slate-500 mb-4">{this.state.error?.message}</p>
+            <button
+              onClick={() => this.setState({ error: null })}
+              className="px-4 py-2 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-700"
+            >
+              Try again
+            </button>
+          </div>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
 import {
   Search, Database, Activity, BarChart3, Network, Shield,
   Plus, Star, CheckCircle, AlertTriangle, Clock, TrendingUp,
@@ -49,12 +78,16 @@ const FALLBACK_CONNECTOR_TYPES = [
   },
 ];
 
+// ─── AUTH TOKEN STORE (in-memory — never localStorage) ───────────────────────
+let _authToken = null;
+export function setAuthToken(t) { _authToken = t; }
+export function getAuthToken()  { return _authToken; }
+
 async function apiFetch(path, opts = {}) {
   try {
-    const res = await fetch(`${API_BASE}${path}`, {
-      headers: { "Content-Type": "application/json" },
-      ...opts,
-    });
+    const headers = { "Content-Type": "application/json" };
+    if (_authToken) headers["Authorization"] = `Bearer ${_authToken}`;
+    const res = await fetch(`${API_BASE}${path}`, { headers, ...opts });
     if (!res.ok) throw new Error(`API ${res.status}`);
     return res.json();
   } catch (e) {
@@ -380,12 +413,13 @@ const ConnStatusDot = ({ status }) => {
   return <span className={`inline-block w-2 h-2 rounded-full ${colors[status] || "bg-slate-400"} mr-1.5`} />;
 };
 
-const Avatar = ({ name, size = 7 }) => {
+const Avatar = ({ name = '?', size = 7 }) => {
   const colors = ["bg-blue-500","bg-purple-500","bg-emerald-500","bg-orange-500","bg-rose-500","bg-indigo-500"];
-  const idx = name.charCodeAt(0) % colors.length;
+  const safeName = name || '?';
+  const idx = safeName.charCodeAt(0) % colors.length;
   return (
     <div className={`w-${size} h-${size} rounded-full ${colors[idx]} flex items-center justify-center text-white text-xs font-bold flex-shrink-0`}>
-      {name.split(" ").map(p => p[0]).join("").slice(0, 2)}
+      {safeName.split(" ").map(p => p[0]).join("").slice(0, 2)}
     </div>
   );
 };
@@ -647,7 +681,694 @@ const LineageGraph = ({ tableId, allTables, onNodeClick }) => {
 
 // ─── MAIN APP ─────────────────────────────────────────────────────────────────
 
+// ─── LOGIN SCREEN ────────────────────────────────────────────────────────────
+function LoginScreen({ onToken }) {
+  const [checking, setChecking] = useState(false);
+  const [oauthConfigured, setOauthConfigured] = useState(null); // null=checking, true/false
+  const [error, setError] = useState(null);
+
+  useEffect(() => {
+    // Handle ?token= or ?auth_error= returned from Google OAuth callback
+    const params = new URLSearchParams(window.location.search);
+    const token = params.get("token");
+    const authError = params.get("auth_error");
+    if (token) { window.history.replaceState({}, "", window.location.pathname); onToken(token); return; }
+    if (authError) setError(`Authentication failed: ${authError}`);
+
+    // Check backend auth status with a short timeout
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), 3000);
+    fetch(`${API_BASE}/api/auth/status`, { signal: ctrl.signal })
+      .then(r => r.json())
+      .then(d => setOauthConfigured(d.google_oauth_configured))
+      .catch(() => setOauthConfigured(false))
+      .finally(() => clearTimeout(timer));
+  }, []);
+
+  const handleGoogleLogin = () => {
+    setChecking(true);
+    window.location.href = `${API_BASE}/api/auth/google`;
+  };
+
+  // Demo / bypass mode — skip auth entirely
+  const handleDemoMode = () => {
+    onToken("demo");
+  };
+
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-blue-950 to-slate-900 flex items-center justify-center p-4">
+      <div className="w-full max-w-md">
+        {/* Logo */}
+        <div className="text-center mb-8">
+          <div className="inline-flex items-center gap-3 mb-4">
+            <div className="w-12 h-12 bg-blue-500 rounded-xl flex items-center justify-center shadow-lg shadow-blue-500/30">
+              <Database className="w-7 h-7 text-white" />
+            </div>
+            <div className="text-left">
+              <div className="text-2xl font-bold text-white tracking-tight">DataIQ</div>
+              <div className="text-xs text-blue-300 font-medium tracking-widest uppercase">Enterprise Platform</div>
+            </div>
+          </div>
+          <p className="text-slate-400 text-sm">Data Quality & Governance</p>
+        </div>
+
+        {/* Card */}
+        <div className="bg-slate-800/60 backdrop-blur border border-slate-700/50 rounded-2xl p-8 shadow-2xl">
+          <h2 className="text-xl font-semibold text-white text-center mb-2">Sign in to DataIQ</h2>
+          <p className="text-slate-400 text-sm text-center mb-6">Use your Google account to continue</p>
+
+          {error && (
+            <div className="mb-4 p-3 bg-red-500/10 border border-red-500/30 rounded-lg text-red-400 text-sm text-center">
+              {error}
+            </div>
+          )}
+
+          {oauthConfigured === false && (
+            <div className="mb-5 p-4 bg-amber-500/10 border border-amber-500/30 rounded-lg text-sm text-amber-300">
+              <div className="font-semibold mb-1">⚠️ Google OAuth not configured</div>
+              <div className="text-amber-400 text-xs leading-relaxed">
+                Add <code className="bg-slate-700 px-1 rounded">GOOGLE_CLIENT_ID</code> &amp;{" "}
+                <code className="bg-slate-700 px-1 rounded">GOOGLE_CLIENT_SECRET</code> to{" "}
+                <code className="bg-slate-700 px-1 rounded">backend/.env</code> and restart the backend.
+                Or use <strong className="text-amber-300">Demo Mode</strong> below.
+              </div>
+            </div>
+          )}
+
+          <button
+            onClick={handleGoogleLogin}
+            disabled={checking || oauthConfigured === false}
+            className="w-full flex items-center justify-center gap-3 bg-white hover:bg-slate-100 disabled:opacity-40 disabled:cursor-not-allowed text-slate-900 font-semibold py-3 px-6 rounded-xl transition-all duration-200 shadow-lg mb-3"
+          >
+            {checking ? (
+              <div className="w-5 h-5 border-2 border-slate-400 border-t-transparent rounded-full animate-spin" />
+            ) : (
+              <svg viewBox="0 0 24 24" className="w-5 h-5" xmlns="http://www.w3.org/2000/svg">
+                <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/>
+                <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/>
+                <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05"/>
+                <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/>
+              </svg>
+            )}
+            {checking ? "Redirecting to Google…" : "Sign in with Google"}
+          </button>
+
+          {/* Divider */}
+          <div className="flex items-center gap-3 my-4">
+            <div className="flex-1 h-px bg-slate-700/50" />
+            <span className="text-xs text-slate-500">or</span>
+            <div className="flex-1 h-px bg-slate-700/50" />
+          </div>
+
+          {/* Demo / bypass button */}
+          <button
+            onClick={handleDemoMode}
+            className="w-full flex items-center justify-center gap-2 border border-slate-600 hover:border-slate-400 text-slate-300 hover:text-white font-medium py-2.5 px-6 rounded-xl transition-all duration-200 text-sm"
+          >
+            <Zap className="w-4 h-4 text-blue-400" />
+            Continue in Demo Mode
+          </button>
+          <p className="text-xs text-slate-600 text-center mt-2">Skip login · Full access · No credentials needed</p>
+
+          <p className="text-xs text-slate-500 text-center mt-5">
+            By signing in you agree to DataIQ's terms of use.
+            <br />Your data stays on your own infrastructure.
+          </p>
+        </div>
+
+        <p className="text-xs text-slate-600 text-center mt-4">
+          DataIQ Platform · Enterprise Data Quality
+        </p>
+      </div>
+    </div>
+  );
+}
+
+
+// ─── AUTH WRAPPER (default export) ───────────────────────────────────────────
 export default function DataIQPlatform() {
+  const [authUser, setAuthUser] = useState(null);
+  const [authReady, setAuthReady] = useState(false);
+
+  const handleToken = useCallback(async (token) => {
+    // Demo mode — bypass auth entirely
+    if (token === "demo") {
+      setAuthUser({ name: "Demo User", email: "demo@dataiq.local", picture: null, role: "admin" });
+      setAuthReady(true);
+      return;
+    }
+    setAuthToken(token);
+    try {
+      const me = await apiFetch("/api/auth/me");
+      if (me && me.email) {
+        setAuthUser(me);
+      } else {
+        setAuthUser({ name: "Demo User", email: "", picture: null, role: "admin" });
+      }
+    } catch {
+      setAuthUser({ name: "Demo User", email: "", picture: null, role: "admin" });
+    }
+    setAuthReady(true);
+  }, []);
+
+  const handleLogout = useCallback(() => {
+    setAuthToken(null);
+    setAuthUser(null);
+  }, []);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const token = params.get("token");
+    if (token) {
+      window.history.replaceState({}, "", window.location.pathname);
+      handleToken(token);
+    } else {
+      setAuthReady(true);
+    }
+  }, [handleToken]);
+
+  if (!authReady) {
+    return (
+      <div className="min-h-screen bg-slate-900 flex items-center justify-center">
+        <div className="w-8 h-8 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
+      </div>
+    );
+  }
+  if (!authUser) {
+    return <LoginScreen onToken={handleToken} />;
+  }
+  return <DataIQApp authUser={authUser} handleLogout={handleLogout} />;
+}
+
+// ─── MAIN APP ─────────────────────────────────────────────────────────────────
+// ─── CONNECTION FORM STEP (memoised so keystrokes stay local, no parent re-render) ──
+const ConnectionFormStep = ({ typeInfo, selectedType, connectorIcons, saving, onBack, onSave }) => {
+  const [connName, setConnName] = useState("");
+  const [formData, setFormData] = useState({});
+
+  return (
+    <>
+      <div className="flex items-center gap-2 mb-2">
+        <span className="text-xl">{connectorIcons[selectedType] || "🔌"}</span>
+        <span className="font-semibold text-slate-700">{typeInfo.display_name} connection</span>
+      </div>
+
+      {/* Connection Name */}
+      <div>
+        <label className="block text-xs font-semibold text-slate-600 mb-1.5 uppercase tracking-wide">Connection Name</label>
+        <input
+          value={connName}
+          onChange={e => setConnName(e.target.value)}
+          placeholder="e.g. Production Database"
+          className="w-full px-3 py-2.5 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+        />
+      </div>
+
+      {/* Dynamic fields */}
+      <div className="space-y-3 max-h-64 overflow-y-auto">
+        {(typeInfo.fields || []).filter(f => !f.show_when).map(field => (
+          <div key={field.name}>
+            <label className="block text-xs font-semibold text-slate-600 mb-1.5 uppercase tracking-wide">
+              {field.label}{field.required && <span className="text-red-500 ml-1">*</span>}
+            </label>
+            {field.type === "select" ? (
+              <select
+                value={formData[field.name] || field.default || ""}
+                onChange={e => setFormData(p => ({ ...p, [field.name]: e.target.value }))}
+                className="w-full px-3 py-2.5 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white">
+                {(field.options || []).map(o => <option key={o} value={o}>{o}</option>)}
+              </select>
+            ) : (
+              <input
+                type={field.type}
+                value={formData[field.name] ?? (field.default ?? "")}
+                onChange={e => setFormData(p => ({ ...p, [field.name]: field.type === "number" ? Number(e.target.value) : e.target.value }))}
+                placeholder={field.placeholder}
+                className="w-full px-3 py-2.5 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              />
+            )}
+            {field.help && <p className="text-xs text-slate-400 mt-1">{field.help}</p>}
+          </div>
+        ))}
+
+        {/* auth_mode conditional fields for Fabric */}
+        {selectedType === "fabric" && (typeInfo.fields || []).filter(f => f.show_when?.auth_mode === (formData.auth_mode || "sql_auth")).map(field => (
+          <div key={field.name}>
+            <label className="block text-xs font-semibold text-slate-600 mb-1.5 uppercase tracking-wide">{field.label}</label>
+            <input
+              type={field.type}
+              value={formData[field.name] || ""}
+              onChange={e => setFormData(p => ({ ...p, [field.name]: e.target.value }))}
+              placeholder={field.placeholder}
+              className="w-full px-3 py-2.5 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+          </div>
+        ))}
+      </div>
+
+      <div className="flex gap-3 pt-2">
+        <button onClick={onBack} className="px-4 py-2.5 border border-slate-200 text-slate-600 text-sm rounded-lg hover:bg-slate-50">
+          ← Back
+        </button>
+        <button
+          onClick={() => onSave(connName, formData)}
+          disabled={!connName || saving}
+          className="flex-1 px-5 py-2.5 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-700 disabled:opacity-40 font-medium flex items-center justify-center gap-2">
+          {saving ? <><RefreshCw className="w-4 h-4 animate-spin" /> Testing…</> : "Save & Test Connection"}
+        </button>
+      </div>
+    </>
+  );
+};
+
+
+// ─── NEW CONNECTION WIZARD (module-level — stable identity, no remount on parent re-render) ──
+const NewConnectionWizard = ({ connTypes, backendOnline, onClose, onConnectionCreated }) => {
+  const [step, setStep]               = useState(1);
+  const [selectedType, setSelectedType] = useState(null);
+  const [saving, setSaving]           = useState(false);
+  const [testing, setTesting]         = useState(false);
+  const [testRes, setTestRes]         = useState(null);
+
+  const connectorIcons = { postgresql: "🐘", fabric: "🪟", snowflake: "❄️", bigquery: "☁️", redshift: "🔴" };
+  const allTypes = (connTypes && connTypes.length > 0) ? connTypes : FALLBACK_CONNECTOR_TYPES;
+  const typeInfo = allTypes.find(t => t.type === selectedType);
+
+  const handleSave = async (connName, formData) => {
+    setSaving(true);
+    setTestRes(null);
+    try {
+      const created = await apiFetch("/api/connections", {
+        method: "POST",
+        body: JSON.stringify({ name: connName, connector_type: selectedType, config: formData }),
+      });
+      if (created && created.id) {
+        setTesting(true);
+        const result = await apiFetch(`/api/connections/${created.id}/test`, { method: "POST" });
+        setTesting(false);
+        setTestRes(result);
+        if (result && result.status === "ok") {
+          await onConnectionCreated();
+          setTimeout(onClose, 800);
+        }
+      } else {
+        setTestRes({ status: "error", message: "Failed to create connection" });
+      }
+    } catch (e) {
+      setTestRes({ status: "error", message: String(e) });
+    } finally {
+      setSaving(false);
+      setTesting(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-auto">
+        {/* Header */}
+        <div className="flex items-center justify-between p-5 border-b border-slate-100">
+          <div>
+            <h2 className="text-lg font-bold text-slate-900">New Connection</h2>
+            <p className="text-xs text-slate-500 mt-0.5">
+              Step {step} of 2 — {step === 1 ? "Choose connector type" : "Configure credentials"}
+            </p>
+          </div>
+          <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-slate-100 text-slate-400">
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+
+        <div className="p-5 space-y-4">
+          {!backendOnline && (
+            <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 flex items-center gap-2 text-sm text-amber-700">
+              <AlertTriangle className="w-4 h-4 flex-shrink-0" />
+              Backend offline — start <code className="font-mono bg-amber-100 px-1 rounded text-xs">uvicorn main:app --reload</code> first
+            </div>
+          )}
+
+          {step === 1 && (
+            <>
+              <p className="text-sm text-slate-600">Select the database or warehouse you want to connect.</p>
+              <div className="grid grid-cols-2 gap-3">
+                {allTypes.map(ct => (
+                  <button
+                    key={ct.type}
+                    onClick={() => { setSelectedType(ct.type); setStep(2); }}
+                    className="flex items-center gap-3 p-4 border border-slate-200 rounded-xl hover:border-blue-300 hover:bg-blue-50 text-left transition-colors group">
+                    <span className="text-2xl">{connectorIcons[ct.type] || "🔌"}</span>
+                    <div>
+                      <div className="font-semibold text-slate-800 text-sm group-hover:text-blue-700">{ct.display_name}</div>
+                      <div className="text-xs text-slate-400">{ct.type}</div>
+                    </div>
+                  </button>
+                ))}
+              </div>
+            </>
+          )}
+
+          {step === 2 && typeInfo && (
+            <ConnectionFormStep
+              typeInfo={typeInfo}
+              selectedType={selectedType}
+              connectorIcons={connectorIcons}
+              saving={saving || testing}
+              onBack={() => { setStep(1); setTestRes(null); }}
+              onSave={handleSave}
+            />
+          )}
+
+          {testRes && (
+            <div className={`rounded-lg p-3 text-sm ${
+              testRes.status === "ok"
+                ? "bg-green-50 text-green-700 border border-green-200"
+                : "bg-red-50 text-red-700 border border-red-200"
+            }`}>
+              {testRes.status === "ok"
+                ? "✅ Connection successful! Closing…"
+                : `❌ ${testRes.error || testRes.message || "Connection failed"}`}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+};
+
+
+// ─── DQ RULES TAB (module-level for stable React identity) ───────────────────
+const RulesTab = () => {
+  const [rules, setRules] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [showNew, setShowNew] = useState(false);
+  const [templates, setTemplates] = useState([]);
+  const [runResults, setRunResults] = useState({});
+  const [running, setRunning] = useState({});
+  const [form, setForm] = useState({ name: "", rule_type: "not_null", table_id: "", column_name: "", severity: "medium", description: "", parameters: {} });
+
+  useEffect(() => {
+    apiFetch("/api/rules/").then(d => { if (d) setRules(d); setLoading(false); });
+    apiFetch("/api/rules/templates").then(d => { if (d) setTemplates(d); });
+  }, []);
+
+  const severityColor = { low: "text-blue-500 bg-blue-50", medium: "text-yellow-600 bg-yellow-50", high: "text-orange-500 bg-orange-50", critical: "text-red-600 bg-red-50" };
+  const statusColor   = { pass: "text-green-600 bg-green-50", fail: "text-red-600 bg-red-50", error: "text-slate-500 bg-slate-100" };
+
+  const runRule = async (id) => {
+    setRunning(r => ({ ...r, [id]: true }));
+    const res = await apiFetch(`/api/rules/${id}/run`, { method: "POST" });
+    setRunning(r => ({ ...r, [id]: false }));
+    if (res) {
+      setRunResults(r => ({ ...r, [id]: res }));
+      setRules(prev => prev.map(r => r.id === id ? { ...r, last_run_status: res.status, last_run_at: res.ran_at } : r));
+    }
+  };
+
+  const deleteRule = async (id) => {
+    await apiFetch(`/api/rules/${id}`, { method: "DELETE" });
+    setRules(prev => prev.filter(r => r.id !== id));
+  };
+
+  const saveRule = async () => {
+    const paramStr = form.rule_type === "custom_sql" ? { sql: form.sql || "" }
+                   : form.rule_type === "regex"      ? { pattern: form.pattern || ".*" }
+                   : form.rule_type === "min_value"  ? { threshold: parseFloat(form.threshold || 0) }
+                   : form.rule_type === "max_value"  ? { threshold: parseFloat(form.threshold || 0) }
+                   : form.rule_type === "row_count"  ? { min_rows: parseInt(form.min_rows || 1) }
+                   : form.rule_type === "freshness"  ? { max_age_hours: parseInt(form.max_age_hours || 24), timestamp_col: form.ts_col || "updated_at" }
+                   : {};
+    const body = { ...form, parameters: paramStr };
+    const res = await apiFetch("/api/rules/", { method: "POST", body: JSON.stringify(body) });
+    if (res) { setRules(prev => [res, ...prev]); setShowNew(false); setForm({ name: "", rule_type: "not_null", table_id: "", column_name: "", severity: "medium", description: "", parameters: {} }); }
+  };
+
+  return (
+    <div className="flex-1 overflow-auto bg-slate-50">
+      <div className="p-6 max-w-6xl mx-auto space-y-6">
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-2xl font-bold text-slate-800">DQ Rule Engine</h1>
+            <p className="text-slate-500 text-sm mt-1">Custom data quality rules that run against your tables</p>
+          </div>
+          <div className="flex gap-2">
+            <button onClick={async () => { const r = await apiFetch("/api/rules/run-all", { method: "POST" }); if (r) alert(`Ran ${r.total} rules: ${r.passed} passed, ${r.failed} failed`); }} className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg text-sm font-medium hover:bg-green-700">
+              <Play className="w-4 h-4" /> Run All
+            </button>
+            <button onClick={() => setShowNew(true)} className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700">
+              <Plus className="w-4 h-4" /> New Rule
+            </button>
+          </div>
+        </div>
+
+        {/* Stats */}
+        <div className="grid grid-cols-4 gap-4">
+          {[
+            { label: "Total Rules",  value: rules.length,                                           color: "blue"   },
+            { label: "Active",       value: rules.filter(r => r.is_active).length,                  color: "green"  },
+            { label: "Passing",      value: rules.filter(r => r.last_run_status === "pass").length, color: "emerald"},
+            { label: "Failing",      value: rules.filter(r => r.last_run_status === "fail").length, color: "red"    },
+          ].map(s => (
+            <div key={s.label} className="bg-white rounded-xl p-4 border border-slate-200 shadow-sm">
+              <div className={`text-2xl font-bold text-${s.color}-600`}>{s.value}</div>
+              <div className="text-xs text-slate-500 mt-1">{s.label}</div>
+            </div>
+          ))}
+        </div>
+
+        {/* New Rule form */}
+        {showNew && (
+          <div className="bg-white border border-slate-200 rounded-xl p-6 shadow-sm">
+            <h3 className="font-semibold text-slate-800 mb-4">Create Rule</h3>
+            <div className="grid grid-cols-2 gap-4">
+              <div><label className="text-xs font-medium text-slate-600">Rule Name</label><input className="mt-1 w-full border border-slate-200 rounded-lg px-3 py-2 text-sm" placeholder="e.g. Orders must have valid customer" value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} /></div>
+              <div><label className="text-xs font-medium text-slate-600">Rule Type</label>
+                <select className="mt-1 w-full border border-slate-200 rounded-lg px-3 py-2 text-sm" value={form.rule_type} onChange={e => setForm(f => ({ ...f, rule_type: e.target.value }))}>
+                  {templates.map(t => <option key={t.rule_type} value={t.rule_type}>{t.name}</option>)}
+                </select>
+              </div>
+              <div><label className="text-xs font-medium text-slate-600">Table ID</label><input className="mt-1 w-full border border-slate-200 rounded-lg px-3 py-2 text-sm font-mono text-xs" placeholder="paste table ID from catalog" value={form.table_id} onChange={e => setForm(f => ({ ...f, table_id: e.target.value }))} /></div>
+              <div><label className="text-xs font-medium text-slate-600">Column Name</label><input className="mt-1 w-full border border-slate-200 rounded-lg px-3 py-2 text-sm" placeholder="e.g. customer_id" value={form.column_name} onChange={e => setForm(f => ({ ...f, column_name: e.target.value }))} /></div>
+              <div><label className="text-xs font-medium text-slate-600">Severity</label>
+                <select className="mt-1 w-full border border-slate-200 rounded-lg px-3 py-2 text-sm" value={form.severity} onChange={e => setForm(f => ({ ...f, severity: e.target.value }))}>
+                  {["low","medium","high","critical"].map(s => <option key={s} value={s}>{s.charAt(0).toUpperCase()+s.slice(1)}</option>)}
+                </select>
+              </div>
+              <div><label className="text-xs font-medium text-slate-600">Description</label><input className="mt-1 w-full border border-slate-200 rounded-lg px-3 py-2 text-sm" placeholder="What does this rule check?" value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))} /></div>
+              {/* Dynamic parameter fields */}
+              {form.rule_type === "regex"     && <div><label className="text-xs font-medium text-slate-600">Regex Pattern</label><input className="mt-1 w-full border border-slate-200 rounded-lg px-3 py-2 text-sm font-mono" placeholder="^[A-Z]" value={form.pattern||""} onChange={e => setForm(f => ({ ...f, pattern: e.target.value }))} /></div>}
+              {(form.rule_type === "min_value" || form.rule_type === "max_value") && <div><label className="text-xs font-medium text-slate-600">Threshold</label><input type="number" className="mt-1 w-full border border-slate-200 rounded-lg px-3 py-2 text-sm" value={form.threshold||""} onChange={e => setForm(f => ({ ...f, threshold: e.target.value }))} /></div>}
+              {form.rule_type === "row_count" && <div><label className="text-xs font-medium text-slate-600">Minimum Rows</label><input type="number" className="mt-1 w-full border border-slate-200 rounded-lg px-3 py-2 text-sm" value={form.min_rows||""} onChange={e => setForm(f => ({ ...f, min_rows: e.target.value }))} /></div>}
+              {form.rule_type === "freshness" && <>
+                <div><label className="text-xs font-medium text-slate-600">Max Age (hours)</label><input type="number" className="mt-1 w-full border border-slate-200 rounded-lg px-3 py-2 text-sm" value={form.max_age_hours||24} onChange={e => setForm(f => ({ ...f, max_age_hours: e.target.value }))} /></div>
+                <div><label className="text-xs font-medium text-slate-600">Timestamp Column</label><input className="mt-1 w-full border border-slate-200 rounded-lg px-3 py-2 text-sm" value={form.ts_col||"updated_at"} onChange={e => setForm(f => ({ ...f, ts_col: e.target.value }))} /></div>
+              </>}
+              {form.rule_type === "custom_sql" && <div className="col-span-2"><label className="text-xs font-medium text-slate-600">SQL (0 rows = pass)</label><textarea className="mt-1 w-full border border-slate-200 rounded-lg px-3 py-2 text-sm font-mono" rows={3} placeholder="SELECT * FROM schema.table WHERE condition_fails" value={form.sql||""} onChange={e => setForm(f => ({ ...f, sql: e.target.value }))} /></div>}
+            </div>
+            <div className="flex justify-end gap-2 mt-4">
+              <button onClick={() => setShowNew(false)} className="px-4 py-2 text-sm text-slate-600 hover:bg-slate-100 rounded-lg">Cancel</button>
+              <button onClick={saveRule} disabled={!form.name || !form.table_id} className="px-4 py-2 bg-blue-600 text-white text-sm rounded-lg font-medium hover:bg-blue-700 disabled:opacity-50">Save Rule</button>
+            </div>
+          </div>
+        )}
+
+        {/* Rules list */}
+        {loading ? (
+          <div className="text-center text-slate-400 py-12">Loading rules…</div>
+        ) : rules.length === 0 ? (
+          <div className="text-center text-slate-400 py-12 bg-white rounded-xl border border-slate-200">
+            <CheckCircle className="w-10 h-10 mx-auto mb-3 text-slate-300" />
+            <div className="font-medium text-slate-500">No rules yet</div>
+            <div className="text-sm mt-1">Click "New Rule" to create your first data quality rule</div>
+          </div>
+        ) : (
+          <div className="space-y-3">
+            {rules.map(rule => {
+              const res = runResults[rule.id];
+              const lastStatus = res?.status || rule.last_run_status;
+              return (
+                <div key={rule.id} className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm">
+                  <div className="flex items-start justify-between gap-4">
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="font-semibold text-slate-800">{rule.name}</span>
+                        <span className="text-xs px-2 py-0.5 bg-slate-100 text-slate-600 rounded-full font-mono">{rule.rule_type}</span>
+                        <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${severityColor[rule.severity] || "text-slate-500 bg-slate-100"}`}>{rule.severity}</span>
+                        {lastStatus && <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${statusColor[lastStatus] || ""}`}>{lastStatus === "pass" ? "✓ Pass" : lastStatus === "fail" ? "✗ Fail" : "⚠ Error"}</span>}
+                        {!rule.is_active && <span className="text-xs px-2 py-0.5 bg-slate-100 text-slate-400 rounded-full">disabled</span>}
+                      </div>
+                      {rule.description && <p className="text-sm text-slate-500 mt-1">{rule.description}</p>}
+                      {rule.column_name && <p className="text-xs text-slate-400 mt-0.5">Column: <span className="font-mono">{rule.column_name}</span></p>}
+                      {res && <p className={`text-xs mt-1 font-medium ${res.status === "pass" ? "text-green-600" : "text-red-600"}`}>{res.message}</p>}
+                      {rule.last_run_at && !res && <p className="text-xs text-slate-400 mt-0.5">Last run: {new Date(rule.last_run_at).toLocaleString()}</p>}
+                    </div>
+                    <div className="flex items-center gap-2 flex-shrink-0">
+                      <button onClick={() => runRule(rule.id)} disabled={running[rule.id]} className="flex items-center gap-1 px-3 py-1.5 bg-green-50 text-green-700 hover:bg-green-100 rounded-lg text-xs font-medium disabled:opacity-50">
+                        {running[rule.id] ? <RefreshCw className="w-3 h-3 animate-spin" /> : <Play className="w-3 h-3" />} Run
+                      </button>
+                      <button onClick={() => deleteRule(rule.id)} className="p-1.5 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-lg">
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
+
+// ─── SCHEDULER TAB (module-level for stable React identity) ──────────────────
+const SchedulerTab = () => {
+  const [scans, setScans] = useState([]);
+  const [history, setHistory] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [showNew, setShowNew] = useState(false);
+  const [running, setRunning] = useState({});
+  const [form, setForm] = useState({ name: "", schedule_cron: "0 6 * * *", connection_id: "", is_active: true });
+
+  useEffect(() => {
+    Promise.all([
+      apiFetch("/api/scheduler/"),
+      apiFetch("/api/scheduler/history"),
+    ]).then(([s, h]) => {
+      if (s) setScans(s);
+      if (h) setHistory(h);
+      setLoading(false);
+    });
+  }, []);
+
+  const runNow = async (id) => {
+    setRunning(r => ({ ...r, [id]: true }));
+    const res = await apiFetch(`/api/scheduler/${id}/run-now`, { method: "POST" });
+    setRunning(r => ({ ...r, [id]: false }));
+    if (res) setScans(prev => prev.map(s => s.id === id ? { ...s, last_run_status: res.status, last_run_at: res.ran_at } : s));
+  };
+
+  const saveScan = async () => {
+    const res = await apiFetch("/api/scheduler/", { method: "POST", body: JSON.stringify(form) });
+    if (res) { setScans(prev => [res, ...prev]); setShowNew(false); setForm({ name: "", schedule_cron: "0 6 * * *", connection_id: "", is_active: true }); }
+  };
+
+  const toggleScan = async (scan) => {
+    const res = await apiFetch(`/api/scheduler/${scan.id}`, { method: "PUT", body: JSON.stringify({ is_active: !scan.is_active }) });
+    if (res) setScans(prev => prev.map(s => s.id === scan.id ? res : s));
+  };
+
+  const statusColor = { completed: "text-green-600 bg-green-50", failed: "text-red-600 bg-red-50", running: "text-blue-600 bg-blue-50" };
+  const PRESETS = [
+    { label: "Every day at 6am",   cron: "0 6 * * *"   },
+    { label: "Every 6 hours",      cron: "0 */6 * * *" },
+    { label: "Every hour",         cron: "0 * * * *"   },
+    { label: "Every 30 minutes",   cron: "*/30 * * * *" },
+    { label: "Weekdays at 8am",    cron: "0 8 * * 1-5" },
+  ];
+
+  return (
+    <div className="flex-1 overflow-auto bg-slate-50">
+      <div className="p-6 max-w-6xl mx-auto space-y-6">
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-2xl font-bold text-slate-800">Profiling Scheduler</h1>
+            <p className="text-slate-500 text-sm mt-1">Automatically re-profile tables and run DQ rules on a cron schedule</p>
+          </div>
+          <button onClick={() => setShowNew(true)} className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700">
+            <Plus className="w-4 h-4" /> New Schedule
+          </button>
+        </div>
+
+        {/* New scan form */}
+        {showNew && (
+          <div className="bg-white border border-slate-200 rounded-xl p-6 shadow-sm">
+            <h3 className="font-semibold text-slate-800 mb-4">Create Scheduled Scan</h3>
+            <div className="grid grid-cols-2 gap-4">
+              <div><label className="text-xs font-medium text-slate-600">Name</label><input className="mt-1 w-full border border-slate-200 rounded-lg px-3 py-2 text-sm" placeholder="e.g. Daily Gold Layer Scan" value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} /></div>
+              <div>
+                <label className="text-xs font-medium text-slate-600">Schedule</label>
+                <select className="mt-1 w-full border border-slate-200 rounded-lg px-3 py-2 text-sm" value={form.schedule_cron} onChange={e => setForm(f => ({ ...f, schedule_cron: e.target.value }))}>
+                  {PRESETS.map(p => <option key={p.cron} value={p.cron}>{p.label} ({p.cron})</option>)}
+                </select>
+              </div>
+              <div className="col-span-2"><label className="text-xs font-medium text-slate-600">Custom Cron (optional override)</label><input className="mt-1 w-full border border-slate-200 rounded-lg px-3 py-2 text-sm font-mono" placeholder="minute hour day month weekday" value={form.schedule_cron} onChange={e => setForm(f => ({ ...f, schedule_cron: e.target.value }))} /></div>
+            </div>
+            <div className="flex justify-end gap-2 mt-4">
+              <button onClick={() => setShowNew(false)} className="px-4 py-2 text-sm text-slate-600 hover:bg-slate-100 rounded-lg">Cancel</button>
+              <button onClick={saveScan} disabled={!form.name} className="px-4 py-2 bg-blue-600 text-white text-sm rounded-lg font-medium hover:bg-blue-700 disabled:opacity-50">Save Schedule</button>
+            </div>
+          </div>
+        )}
+
+        {/* Scans list */}
+        <div className="space-y-3">
+          {loading ? (
+            <div className="text-center text-slate-400 py-8">Loading…</div>
+          ) : scans.length === 0 ? (
+            <div className="text-center text-slate-400 py-12 bg-white rounded-xl border border-slate-200">
+              <Calendar className="w-10 h-10 mx-auto mb-3 text-slate-300" />
+              <div className="font-medium text-slate-500">No scheduled scans</div>
+              <div className="text-sm mt-1">Create a schedule to automatically run quality checks</div>
+            </div>
+          ) : scans.map(scan => (
+            <div key={scan.id} className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm">
+              <div className="flex items-center justify-between gap-4">
+                <div className="flex-1">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="font-semibold text-slate-800">{scan.name}</span>
+                    <span className="text-xs px-2 py-0.5 bg-slate-100 text-slate-600 rounded-full font-mono">{scan.schedule_cron}</span>
+                    {scan.last_run_status && <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${statusColor[scan.last_run_status] || "text-slate-500 bg-slate-100"}`}>{scan.last_run_status}</span>}
+                    <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${scan.is_active ? "text-green-600 bg-green-50" : "text-slate-400 bg-slate-100"}`}>{scan.is_active ? "Active" : "Paused"}</span>
+                  </div>
+                  <div className="flex gap-4 mt-1.5 text-xs text-slate-400">
+                    {scan.last_run_at && <span>Last run: {new Date(scan.last_run_at).toLocaleString()}</span>}
+                    {scan.next_run_at && <span>Next run: {new Date(scan.next_run_at).toLocaleString()}</span>}
+                  </div>
+                </div>
+                <div className="flex items-center gap-2 flex-shrink-0">
+                  <button onClick={() => runNow(scan.id)} disabled={running[scan.id]} className="flex items-center gap-1 px-3 py-1.5 bg-blue-50 text-blue-700 hover:bg-blue-100 rounded-lg text-xs font-medium disabled:opacity-50">
+                    {running[scan.id] ? <RefreshCw className="w-3 h-3 animate-spin" /> : <Play className="w-3 h-3" />} Run Now
+                  </button>
+                  <button onClick={() => toggleScan(scan)} className={`px-3 py-1.5 rounded-lg text-xs font-medium ${scan.is_active ? "bg-slate-100 text-slate-600 hover:bg-slate-200" : "bg-green-50 text-green-700 hover:bg-green-100"}`}>
+                    {scan.is_active ? <Pause className="w-3 h-3" /> : <Play className="w-3 h-3" />}
+                  </button>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+
+        {/* History */}
+        {history.length > 0 && (
+          <div>
+            <h2 className="text-lg font-semibold text-slate-700 mb-3">Recent Run History</h2>
+            <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm">
+              <table className="w-full text-sm">
+                <thead className="bg-slate-50 border-b border-slate-200">
+                  <tr>{["Status","Tables Scanned","Issues Found","Quality Score","Triggered By","Started At"].map(h => <th key={h} className="px-4 py-2.5 text-left text-xs font-semibold text-slate-500">{h}</th>)}</tr>
+                </thead>
+                <tbody>
+                  {history.slice(0, 10).map(run => (
+                    <tr key={run.id} className="border-b border-slate-100 hover:bg-slate-50">
+                      <td className="px-4 py-2.5"><span className={`text-xs px-2 py-0.5 rounded-full font-medium ${statusColor[run.status] || "text-slate-500 bg-slate-100"}`}>{run.status}</span></td>
+                      <td className="px-4 py-2.5 text-slate-700">{run.tables_scanned}</td>
+                      <td className="px-4 py-2.5 text-slate-700">{run.issues_found}</td>
+                      <td className="px-4 py-2.5 text-slate-700">{run.quality_score ? `${run.quality_score.toFixed(1)}%` : "—"}</td>
+                      <td className="px-4 py-2.5 text-slate-500 capitalize">{run.triggered_by}</td>
+                      <td className="px-4 py-2.5 text-slate-400 text-xs">{run.started_at ? new Date(run.started_at).toLocaleString() : "—"}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
+
+// ─── MAIN APP ─────────────────────────────────────────────────────────────────
+function DataIQApp({ authUser, handleLogout }) {
   const [activeTab, setActiveTab] = useState("dashboard");
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedTable, setSelectedTable] = useState(null);
@@ -671,14 +1392,6 @@ export default function DataIQPlatform() {
   const [realConnections, setRealConnections] = useState([]);
   const [connTypes, setConnTypes] = useState([]);          // connector type metadata from API
   const [showNewConn, setShowNewConn] = useState(false);
-  // Wizard state hoisted to App so it survives NewConnectionWizard re-mounts
-  const [wizStep, setWizStep] = useState(1);
-  const [wizSelectedType, setWizSelectedType] = useState(null);
-  const [wizFormData, setWizFormData] = useState({});
-  const [wizConnName, setWizConnName] = useState("");
-  const [wizTesting, setWizTesting] = useState(false);
-  const [wizTestRes, setWizTestRes] = useState(null);
-  const [wizSaving, setWizSaving] = useState(false);
   const [testResults, setTestResults] = useState({});      // connectionId → test result
   const [discoveringSchema, setDiscoveringSchema] = useState({}); // connectionId → bool
   const [connSchemas, setConnSchemas] = useState({});      // connectionId → [schemaName]
@@ -715,14 +1428,6 @@ export default function DataIQPlatform() {
       loadCatalogData();
     }
   }, [backendOnline]);
-
-  // Reset wizard state whenever it's closed
-  useEffect(() => {
-    if (!showNewConn) {
-      setWizStep(1); setWizSelectedType(null); setWizFormData({});
-      setWizConnName(""); setWizTesting(false); setWizTestRes(null); setWizSaving(false);
-    }
-  }, [showNewConn]);
 
   // Check backend health
   useEffect(() => {
@@ -836,7 +1541,7 @@ export default function DataIQPlatform() {
 
   const totalIssues = catalogIssues.length;
   const highIssues = catalogIssues.filter(i => i.severity === "high").length;
-  const avgQuality = catalogTables.length > 0 ? Math.round(catalogTables.reduce((a, t) => a + t.quality, 0) / catalogTables.length) : 0;
+  const avgQuality = catalogTables.length > 0 ? Math.round(catalogTables.reduce((a, t) => a + (t.quality ?? 0), 0) / catalogTables.length) : 0;
   const activeAgents = mockAgents.filter(a => a.status === "active").length;
 
   // ── SIDEBAR ────────────────────────────────────────────────────────────────
@@ -848,6 +1553,8 @@ export default function DataIQPlatform() {
     { id: "agents",      icon: Bot,       label: "AI Agents" },
     { id: "tasks",       icon: ListTodo,  label: "Tasks" },
     { id: "governance",  icon: Shield,    label: "Governance" },
+    { id: "rules",       icon: CheckCircle, label: "DQ Rules" },
+    { id: "scheduler",   icon: Calendar,  label: "Scheduler" },
     { id: "connections", icon: Database,  label: "Connections" },
   ];
 
@@ -979,7 +1686,24 @@ export default function DataIQPlatform() {
               </div>
             )}
           </div>
-          <div className="w-8 h-8 rounded-full bg-blue-500 flex items-center justify-center text-white text-xs font-bold">MA</div>
+          {/* User avatar + logout */}
+          <div className="flex items-center gap-2">
+            {authUser?.picture ? (
+              <img src={authUser.picture} alt={authUser.name} className="w-8 h-8 rounded-full border-2 border-blue-200" />
+            ) : (
+              <div className="w-8 h-8 rounded-full bg-blue-500 flex items-center justify-center text-white text-xs font-bold">
+                {authUser?.name ? authUser.name[0].toUpperCase() : "U"}
+              </div>
+            )}
+            <div className="hidden sm:block text-xs text-slate-600 max-w-[100px] truncate">{authUser?.name}</div>
+            <button
+              onClick={handleLogout}
+              title="Sign out"
+              className="p-1.5 hover:bg-slate-100 rounded-lg text-slate-500 hover:text-red-500 transition-colors"
+            >
+              <Lock className="w-4 h-4" />
+            </button>
+          </div>
         </div>
       </div>
     );
@@ -1038,7 +1762,7 @@ export default function DataIQPlatform() {
                       <span className="text-sm font-semibold text-slate-800 font-mono">{t.name}</span>
                       <TrustBadge trust={t.trust} />
                     </div>
-                    <div className="text-xs text-slate-500 truncate mt-0.5">{t.connection} · {t.schema} · {t.records.toLocaleString()} records</div>
+                    <div className="text-xs text-slate-500 truncate mt-0.5">{t.connection} · {t.schema} · {(t.records ?? t.row_count ?? 0).toLocaleString()} records</div>
                   </div>
                   <div className="w-24 flex-shrink-0">
                     <QualityBar score={t.quality} />
@@ -1147,7 +1871,7 @@ export default function DataIQPlatform() {
                         <TrustBadge trust={t.trust} />
                         {t.issues > 0 && <span className="text-xs bg-red-100 text-red-700 border border-red-200 rounded-full px-2 py-0.5">{t.issues} issues</span>}
                       </div>
-                      <div className="text-xs text-slate-500 mt-0.5">{t.connection} · <code className="bg-slate-100 px-1 rounded">{t.schema}</code> · {t.records.toLocaleString()} records</div>
+                      <div className="text-xs text-slate-500 mt-0.5">{t.connection} · <code className="bg-slate-100 px-1 rounded">{t.schema}</code> · {(t.records ?? t.row_count ?? 0).toLocaleString()} records</div>
                       {!selectedTable && <p className="text-xs text-slate-600 mt-1.5 line-clamp-2">{t.description}</p>}
                       <div className="flex items-center gap-3 mt-2">
                         <div className="flex-1"><QualityBar score={t.quality} /></div>
@@ -1203,7 +1927,7 @@ export default function DataIQPlatform() {
                 {/* Quick stats */}
                 <div className="grid grid-cols-4 gap-3">
                   {[
-                    { label: "Records", value: selectedTable.records.toLocaleString(), icon: Hash },
+                    { label: "Records", value: (selectedTable.records ?? selectedTable.row_count ?? 0).toLocaleString(), icon: Hash },
                     { label: "Columns", value: selectedTable.columns, icon: Columns },
                     { label: "Quality Score", value: `${selectedTable.quality}%`, icon: Target },
                     { label: "Last Profiled", value: selectedTable.lastProfiled, icon: Clock },
@@ -1941,205 +2665,6 @@ export default function DataIQPlatform() {
   );
 
   // ── CONNECTIONS TAB ────────────────────────────────────────────────────────
-  // ── New Connection Wizard ──────────────────────────────────────────────────
-  const NewConnectionWizard = () => {
-    // State lives in parent App so it survives re-mounts (fixes modal closing on Continue)
-    const step = wizStep;               const setStep = setWizStep;
-    const selectedType = wizSelectedType; const setSelectedType = setWizSelectedType;
-    const formData = wizFormData;       const setFormData = setWizFormData;
-    const connName = wizConnName;       const setConnName = setWizConnName;
-    const testing = wizTesting;         const setTesting = setWizTesting;
-    const testRes = wizTestRes;         const setTestRes = setWizTestRes;
-    const saving = wizSaving;           const setSaving = setWizSaving;
-
-    // Use live API types if available, fall back to hardcoded list
-    const effectiveConnTypes = connTypes.length > 0 ? connTypes : FALLBACK_CONNECTOR_TYPES;
-    const typeInfo = effectiveConnTypes.find(t => t.type === selectedType);
-
-    const handleCreate = async () => {
-      setSaving(true);
-      const created = await apiFetch("/api/connections", {
-        method: "POST",
-        body: JSON.stringify({ name: connName, connector_type: selectedType, config: formData }),
-      });
-      if (created) {
-        // Auto-test
-        setTesting(true);
-        const tr = await apiFetch(`/api/connections/${created.id}/test`, { method: "POST" });
-        setTesting(false);
-        setTestRes(tr);
-        await loadRealConnections();
-        setStep(3);
-      }
-      setSaving(false);
-    };
-
-    const connectorIcons = { postgresql: "🐘", fabric: "🪟", snowflake: "❄️", bigquery: "☁️", redshift: "🔴", databricks: "🧱" };
-
-    return (
-      <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-        <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg">
-          {/* Header */}
-          <div className="flex items-center justify-between p-6 border-b border-slate-100">
-            <div>
-              <h2 className="text-lg font-bold text-slate-900">New Data Connection</h2>
-              <p className="text-sm text-slate-500 mt-0.5">Step {step} of 3</p>
-            </div>
-            <button onClick={() => setShowNewConn(false)} className="p-2 hover:bg-slate-100 rounded-lg">
-              <X className="w-5 h-5 text-slate-500" />
-            </button>
-          </div>
-
-          {/* Progress bar */}
-          <div className="h-1 bg-slate-100">
-            <div className="h-1 bg-blue-600 transition-all" style={{ width: `${(step / 3) * 100}%` }} />
-          </div>
-
-          <div className="p-6 space-y-4">
-            {/* Step 1: Choose type */}
-            {step === 1 && (
-              <>
-                <p className="text-sm text-slate-600 mb-3">Select your data warehouse type to get started.</p>
-                {!backendOnline && (
-                  <div className="mb-3 flex items-center gap-2 px-3 py-2 bg-amber-50 border border-amber-200 rounded-lg text-xs text-amber-700">
-                    <AlertTriangle className="w-3.5 h-3.5 flex-shrink-0" />
-                    <span>Backend offline — start it to save & test connections. You can still browse the form.</span>
-                  </div>
-                )}
-                <div className="grid grid-cols-2 gap-3">
-                  {effectiveConnTypes.map(ct => (
-                    <button key={ct.type}
-                      onClick={() => setSelectedType(ct.type)}
-                      className={`flex items-center gap-3 p-4 rounded-xl border-2 text-left transition-all ${
-                        selectedType === ct.type
-                          ? "border-blue-500 bg-blue-50"
-                          : "border-slate-200 hover:border-slate-300 bg-white"
-                      }`}>
-                      <span className="text-2xl">{connectorIcons[ct.type] || "🔌"}</span>
-                      <div>
-                        <div className="font-semibold text-slate-800 text-sm">{ct.display_name}</div>
-                        <div className="text-xs text-slate-400 capitalize">{ct.type}</div>
-                      </div>
-                    </button>
-                  ))}
-                </div>
-                <div className="flex justify-end pt-2">
-                  <button onClick={() => setStep(2)} disabled={!selectedType}
-                    className="px-5 py-2.5 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-700 disabled:opacity-40 disabled:cursor-not-allowed font-medium">
-                    Continue →
-                  </button>
-                </div>
-              </>
-            )}
-
-            {/* Step 2: Configure */}
-            {step === 2 && typeInfo && (
-              <>
-                <div className="flex items-center gap-2 mb-2">
-                  <span className="text-xl">{connectorIcons[selectedType] || "🔌"}</span>
-                  <span className="font-semibold text-slate-700">{typeInfo.display_name} connection</span>
-                </div>
-
-                {/* Connection Name */}
-                <div>
-                  <label className="block text-xs font-semibold text-slate-600 mb-1.5 uppercase tracking-wide">Connection Name</label>
-                  <input
-                    value={connName}
-                    onChange={e => setConnName(e.target.value)}
-                    placeholder="e.g. Production Database"
-                    className="w-full px-3 py-2.5 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                  />
-                </div>
-
-                {/* Dynamic fields from connector definition */}
-                <div className="space-y-3 max-h-64 overflow-y-auto">
-                  {(typeInfo.fields || []).filter(f => !f.show_when).map(field => (
-                    <div key={field.name}>
-                      <label className="block text-xs font-semibold text-slate-600 mb-1.5 uppercase tracking-wide">
-                        {field.label}
-                        {field.required && <span className="text-red-500 ml-1">*</span>}
-                      </label>
-                      {field.type === "select" ? (
-                        <select
-                          value={formData[field.name] || field.default || ""}
-                          onChange={e => setFormData(p => ({ ...p, [field.name]: e.target.value }))}
-                          className="w-full px-3 py-2.5 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white">
-                          {(field.options || []).map(o => <option key={o} value={o}>{o}</option>)}
-                        </select>
-                      ) : (
-                        <input
-                          type={field.type}
-                          value={formData[field.name] || ""}
-                          onChange={e => setFormData(p => ({ ...p, [field.name]: field.type === "number" ? Number(e.target.value) : e.target.value }))}
-                          placeholder={field.placeholder}
-                          className="w-full px-3 py-2.5 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                        />
-                      )}
-                      {field.help && <p className="text-xs text-slate-400 mt-1">{field.help}</p>}
-                    </div>
-                  ))}
-
-                  {/* auth_mode conditional fields for Fabric */}
-                  {selectedType === "fabric" && (typeInfo.fields || []).filter(f => f.show_when?.auth_mode === (formData.auth_mode || "sql_auth")).map(field => (
-                    <div key={field.name}>
-                      <label className="block text-xs font-semibold text-slate-600 mb-1.5 uppercase tracking-wide">{field.label}</label>
-                      <input
-                        type={field.type}
-                        value={formData[field.name] || ""}
-                        onChange={e => setFormData(p => ({ ...p, [field.name]: e.target.value }))}
-                        placeholder={field.placeholder}
-                        className="w-full px-3 py-2.5 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      />
-                    </div>
-                  ))}
-                </div>
-
-                <div className="flex gap-3 pt-2">
-                  <button onClick={() => setStep(1)} className="px-4 py-2.5 border border-slate-200 text-slate-600 text-sm rounded-lg hover:bg-slate-50">
-                    ← Back
-                  </button>
-                  <button onClick={handleCreate} disabled={!connName || saving}
-                    className="flex-1 px-5 py-2.5 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-700 disabled:opacity-40 font-medium flex items-center justify-center gap-2">
-                    {saving ? <><RefreshCw className="w-4 h-4 animate-spin" /> Testing…</> : "Save & Test Connection"}
-                  </button>
-                </div>
-              </>
-            )}
-
-            {/* Step 3: Result */}
-            {step === 3 && (
-              <div className="text-center py-4 space-y-4">
-                {testing && (
-                  <><RefreshCw className="w-10 h-10 text-blue-500 animate-spin mx-auto" />
-                  <p className="text-slate-600">Testing connection…</p></>
-                )}
-                {!testing && testRes && (
-                  <>
-                    <div className={`w-16 h-16 rounded-full flex items-center justify-center mx-auto ${testRes.success ? "bg-emerald-100" : "bg-red-100"}`}>
-                      {testRes.success ? <CheckCircle className="w-8 h-8 text-emerald-600" /> : <AlertTriangle className="w-8 h-8 text-red-600" />}
-                    </div>
-                    <div>
-                      <h3 className={`font-bold text-lg ${testRes.success ? "text-emerald-700" : "text-red-700"}`}>
-                        {testRes.success ? "Connection Successful!" : "Connection Failed"}
-                      </h3>
-                      <p className="text-sm text-slate-500 mt-1">{testRes.message}</p>
-                      {testRes.latency_ms && <p className="text-xs text-slate-400 mt-1">Latency: {testRes.latency_ms}ms</p>}
-                      {testRes.server_version && <p className="text-xs text-slate-400 mt-1 font-mono">{testRes.server_version?.substring(0, 80)}</p>}
-                      {testRes.error && <p className="text-xs text-red-500 mt-2 font-mono">{testRes.error}</p>}
-                    </div>
-                    <button onClick={() => setShowNewConn(false)}
-                      className="px-6 py-2.5 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-700 font-medium">
-                      Done
-                    </button>
-                  </>
-                )}
-              </div>
-            )}
-          </div>
-        </div>
-      </div>
-    );
-  };
 
   // ── Connection Card ────────────────────────────────────────────────────────
   const RealConnectionCard = ({ conn }) => {
@@ -2413,7 +2938,6 @@ export default function DataIQPlatform() {
   // ── Connections Tab ────────────────────────────────────────────────────────
   const ConnectionsTab = () => (
     <div className="flex-1 overflow-auto bg-slate-50">
-      {showNewConn && <NewConnectionWizard />}
       {profileResult && <ProfileResultModal />}
 
       <div className="p-6 max-w-7xl mx-auto space-y-5">
@@ -2494,6 +3018,7 @@ export default function DataIQPlatform() {
   );
 
   // ── RENDER ─────────────────────────────────────────────────────────────────
+  // (RulesTab and SchedulerTab are defined at module level above DataIQApp)
   const renderTab = () => {
     switch (activeTab) {
       case "dashboard":    return <Dashboard />;
@@ -2504,6 +3029,8 @@ export default function DataIQPlatform() {
       case "tasks":        return <TasksTab />;
       case "governance":   return <GovernanceTab />;
       case "connections":  return <ConnectionsTab />;
+      case "rules":        return <RulesTab />;
+      case "scheduler":    return <SchedulerTab />;
       default:             return <Dashboard />;
     }
   };
@@ -2513,8 +3040,17 @@ export default function DataIQPlatform() {
       <Sidebar />
       <div className="flex-1 flex flex-col min-w-0">
         <TopBar />
-        {renderTab()}
+        <ErrorBoundary key={activeTab}>{renderTab()}</ErrorBoundary>
       </div>
+      {/* Connection wizard rendered at top level so DataIQApp re-renders never reset its state */}
+      {showNewConn && (
+        <NewConnectionWizard
+          connTypes={connTypes}
+          backendOnline={backendOnline}
+          onClose={() => setShowNewConn(false)}
+          onConnectionCreated={loadRealConnections}
+        />
+      )}
     </div>
   );
 }

@@ -19,6 +19,27 @@ def _uuid() -> str:
     return str(uuid.uuid4())
 
 
+# ── User ─────────────────────────────────────────────────────────────────────
+
+class User(Base):
+    __tablename__ = "users"
+
+    id           = Column(String(36),  primary_key=True, default=_uuid)
+    email        = Column(String(255), nullable=False, unique=True, index=True)
+    name         = Column(String(255), nullable=True)
+    picture      = Column(String(512), nullable=True)   # Google profile picture URL
+    google_id    = Column(String(128), nullable=True, unique=True, index=True)
+    role         = Column(String(50),  default="viewer")  # viewer | editor | admin
+    is_active    = Column(Boolean,     default=True)
+    last_login   = Column(DateTime,    nullable=True)
+    created_at   = Column(DateTime,    default=datetime.utcnow)
+    updated_at   = Column(DateTime,    default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    __table_args__ = (
+        Index("ix_user_email", "email"),
+    )
+
+
 # ── Connection ───────────────────────────────────────────────────────────────
 
 class Connection(Base):
@@ -171,3 +192,62 @@ class ProfilingRun(Base):
     completed_at    = Column(DateTime,    nullable=True)
     error           = Column(Text,        nullable=True)
     summary         = Column(JSON,        default=dict)
+
+
+# ── DQ Rule ───────────────────────────────────────────────────────────────────
+
+class DQRule(Base):
+    __tablename__ = "dq_rules"
+
+    id               = Column(String(36),  primary_key=True, default=_uuid)
+    table_id         = Column(String(36),  ForeignKey("discovered_tables.id", ondelete="CASCADE"), nullable=False, index=True)
+    name             = Column(String(255), nullable=False)
+    rule_type        = Column(String(50),  nullable=False)   # not_null | unique | min_value | max_value | regex | freshness | row_count | custom_sql
+    column_name      = Column(String(255), nullable=True)
+    parameters       = Column(JSON,        default=dict)
+    severity         = Column(String(20),  default="medium")
+    description      = Column(Text,        nullable=True)
+    is_active        = Column(Boolean,     default=True)
+    last_run_at      = Column(DateTime,    nullable=True)
+    last_run_status  = Column(String(20),  nullable=True)    # pass | fail | error
+    created_at       = Column(DateTime,    default=datetime.utcnow)
+    updated_at       = Column(DateTime,    default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    runs             = relationship("DQRuleRun", back_populates="rule", cascade="all, delete-orphan")
+
+    __table_args__ = (
+        Index("ix_dqrule_table", "table_id"),
+    )
+
+
+# ── DQ Rule Run ───────────────────────────────────────────────────────────────
+
+class DQRuleRun(Base):
+    __tablename__ = "dq_rule_runs"
+
+    id           = Column(String(36),  primary_key=True, default=_uuid)
+    rule_id      = Column(String(36),  ForeignKey("dq_rules.id", ondelete="CASCADE"), nullable=False, index=True)
+    status       = Column(String(20),  nullable=False)    # pass | fail | error
+    failing_rows = Column(Integer,     default=0)
+    total_rows   = Column(Integer,     default=0)
+    message      = Column(Text,        nullable=True)
+    ran_at       = Column(DateTime,    default=datetime.utcnow)
+
+    rule         = relationship("DQRule", back_populates="runs")
+
+
+# ── Scheduled Scan ────────────────────────────────────────────────────────────
+
+class ScheduledScan(Base):
+    __tablename__ = "scheduled_scans"
+
+    id              = Column(String(36),  primary_key=True, default=_uuid)
+    name            = Column(String(255), nullable=False)
+    connection_id   = Column(String(36),  ForeignKey("connections.id", ondelete="CASCADE"), nullable=True, index=True)
+    schedule_cron   = Column(String(100), nullable=False)   # e.g. "0 6 * * *"
+    is_active       = Column(Boolean,     default=True)
+    last_run_at     = Column(DateTime,    nullable=True)
+    last_run_status = Column(String(20),  nullable=True)    # running | completed | failed
+    next_run_at     = Column(DateTime,    nullable=True)
+    created_at      = Column(DateTime,    default=datetime.utcnow)
+    updated_at      = Column(DateTime,    default=datetime.utcnow, onupdate=datetime.utcnow)

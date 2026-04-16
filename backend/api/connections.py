@@ -23,7 +23,23 @@ router = APIRouter(prefix="/api/connections", tags=["connections"])
 class ConnectionCreate(BaseModel):
     name:           str
     connector_type: str
-    config:         Dict[str, Any]    # raw credential dict — encrypted at rest
+    # Flat credential fields — the primary format sent by the frontend
+    host:           Optional[str] = None
+    port:           Optional[int] = None
+    database:       Optional[str] = None
+    username:       Optional[str] = None
+    password:       Optional[str] = None
+    sslmode:        Optional[str] = "prefer"
+    # Fabric / other connector-specific fields
+    server:         Optional[str] = None
+    workspace:      Optional[str] = None
+    auth_mode:      Optional[str] = None
+    tenant_id_fabric: Optional[str] = None
+    client_id:      Optional[str] = None
+    client_secret:  Optional[str] = None
+    access_token:   Optional[str] = None
+    # Nested config dict — also accepted (takes precedence over flat fields)
+    config:         Optional[Dict[str, Any]] = None
     description:    Optional[str] = ""
     tenant_id:      Optional[str] = None
 
@@ -57,11 +73,19 @@ def list_conns(tenant_id: Optional[str] = None, db: Session = Depends(get_db)):
 def create_conn(body: ConnectionCreate, db: Session = Depends(get_db)):
     """Create a new connection. Credentials are encrypted before storage."""
     try:
+        # Build config: nested dict takes precedence; otherwise collect flat fields
+        _flat_keys = ("host", "port", "database", "username", "password", "sslmode",
+                      "server", "workspace", "auth_mode", "tenant_id_fabric",
+                      "client_id", "client_secret", "access_token")
+        config = body.config or {
+            k: getattr(body, k) for k in _flat_keys
+            if getattr(body, k) is not None
+        }
         conn = create_connection(
             db=db,
             name=body.name,
             connector_type=body.connector_type,
-            config=body.config,
+            config=config,
             description=body.description or "",
             tenant_id=body.tenant_id,
         )

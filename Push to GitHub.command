@@ -6,7 +6,7 @@ echo "  DataIQ Platform — Push to GitHub (dq_sense)          "
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo ""
 
-REMOTE_URL="https://github.com/milanairre/dq_sense.git"
+REMOTE_URL="https://github.com/milan6rt/dq_sense.git"
 
 # Clean up any stale git lock files
 rm -f .git/index.lock 2>/dev/null
@@ -44,6 +44,7 @@ git add \
     dist.html \
     "Seed Demo Data.command" \
     "Start DataIQ.command" \
+    "Restart Backend.command" \
     "Push to GitHub.command" \
     backend/main.py \
     backend/requirements.txt \
@@ -51,7 +52,8 @@ git add \
     backend/api/ \
     backend/connectors/ \
     backend/db/ \
-    backend/services/ 2>/dev/null
+    backend/services/ \
+    "backend/.env.example" 2>/dev/null
 
 git status --short
 echo ""
@@ -62,17 +64,16 @@ if git diff --cached --quiet; then
 else
     echo "💾 Committing..."
     git commit -m "$(cat <<'EOF'
-Add medallion architecture, catalog API, and real data wiring
+Connect demo PostgreSQL schema; fix backend startup deps
 
-- Bronze/Silver/Gold medallion schemas seeded in PostgreSQL
-  (Nexus Commerce scenario: Salesforce CRM + NetSuite ERP + Workday HR)
-- /discover-medallion and /profile-medallion endpoints
-- /api/catalog/tables and /api/catalog/issues endpoints with
-  schema→trust mapping, rich metadata, and lineage hints
-- App.jsx wired to real catalog API: catalogTables/catalogIssues
-  state replaces all mock data across Dashboard, Catalog, Quality,
-  Lineage, Governance, and Tasks views
-- .gitignore excluding node_modules, dist, keys, and DB files
+- Made httpx and python-jose imports optional in auth.py so the
+  backend starts cleanly without Google OAuth env vars configured
+- Commented out pyodbc in requirements.txt (requires native ODBC
+  Driver 18 installed separately — not needed for PostgreSQL)
+- Added Restart Backend.command: kills old backend on port 8000,
+  wipes dataiq.db, reinstalls deps, starts new backend cleanly
+- Demo schema (customers, products, orders, order_items, employees,
+  events) discovered and profiled — 98% avg quality score
 EOF
 )"
     echo ""
@@ -85,5 +86,5 @@ git push -u origin main
 
 echo ""
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-echo "  ✅ Done! Check: https://github.com/milanairre/dq_sense"
+echo "  ✅ Done! Check: https://github.com/milan6rt/dq_sense"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"

@@ -18,9 +18,15 @@ from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, Back
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
+from dotenv import load_dotenv
+load_dotenv()  # loads backend/.env if present
+
 from agents import AgentOrchestrator, AgentStatusEnum
 from db.database import init_db, get_db
 from api.connections import router as connections_router
+from api.auth import router as auth_router
+from api.rules import router as rules_router
+from api.scheduler import router as scheduler_router, restore_scheduled_jobs
 
 # ── Logging ──────────────────────────────────────────────────────────────────
 logging.basicConfig(
@@ -101,6 +107,10 @@ async def lifespan(app: FastAPI):
         await orchestrator.start_agent(agent_id)
     logger.info("All agents started")
 
+    # Restore scheduled scan jobs from DB
+    restore_scheduled_jobs()
+    logger.info("Scheduled jobs restored")
+
     yield
 
     await orchestrator.stop_orchestrator()
@@ -124,8 +134,11 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Mount connection routes
+# Mount routers
 app.include_router(connections_router)
+app.include_router(auth_router)
+app.include_router(rules_router)
+app.include_router(scheduler_router)
 
 
 # ── Pydantic models ───────────────────────────────────────────────────────────
