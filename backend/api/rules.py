@@ -183,16 +183,24 @@ def _execute_rule(rule: "DQRule", db: Session) -> dict:
 
     # Decrypt and connect to the actual DB
     try:
-        from services.connection_service import ConnectionService
-        svc = ConnectionService(db)
-        pg_engine = svc.get_engine(conn_obj.id)
+        from services.connection_service import _decrypt
+        from connectors.registry import build_connector
+        config    = _decrypt(conn_obj.encrypted_config)
+        connector = build_connector(conn_obj.connector_type, config)
+        pg_engine = connector._engine()
     except Exception as e:
         return _save_run(rule, db, "error", 0, 0, f"Cannot connect: {e}")
 
     schema = table.schema_name
     tbl    = table.table_name
-    col    = rule.column_name
+    col    = rule.column_name or ""
     params = rule.parameters or {}
+
+    # Validate column is set for rules that require one
+    COLUMN_REQUIRED = {"not_null", "unique", "min_value", "max_value", "regex", "freshness"}
+    if rule.rule_type in COLUMN_REQUIRED and not col.strip():
+        return _save_run(rule, db, "error", 0, 0,
+                         f"Rule type '{rule.rule_type}' requires a column — please edit the rule and select one")
 
     try:
         sql, check_fn = _build_sql(rule.rule_type, schema, tbl, col, params)

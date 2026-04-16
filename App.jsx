@@ -38,7 +38,7 @@ import {
   ZoomOut, RotateCcw, Info, Settings, Users, Globe, Lock,
   Bookmark, ExternalLink, AlertCircle, TrendingDown, Hash,
   Calendar, Table, Columns, Key, Link, ChevronUp, MoreHorizontal,
-  Check, Circle, ListTodo, Trash2, Send, Wifi, WifiOff
+  Check, Circle, ListTodo, Trash2, Send, Wifi, WifiOff, Pencil
 } from "lucide-react";
 
 // ─── BACKEND API CONFIG ───────────────────────────────────────────────────────
@@ -52,9 +52,9 @@ const FALLBACK_CONNECTOR_TYPES = [
     display_name: "PostgreSQL",
     icon: "🐘",
     fields: [
-      { name: "host",     label: "Host",     type: "text",     placeholder: "localhost",  required: true  },
+      { name: "host",     label: "Host",     type: "text",     placeholder: "localhost",  required: true, default: "localhost" },
       { name: "port",     label: "Port",     type: "number",   placeholder: "5432",       required: true, default: 5432 },
-      { name: "database", label: "Database", type: "text",     placeholder: "mydb",       required: true  },
+      { name: "database", label: "Database", type: "text",     placeholder: "postgres",   required: true, default: "postgres" },
       { name: "username", label: "Username", type: "text",     placeholder: "postgres",   required: true  },
       { name: "password", label: "Password", type: "password", placeholder: "••••••••",  required: true  },
       { name: "sslmode",  label: "SSL Mode", type: "select",   options: ["disable","allow","prefer","require","verify-ca","verify-full"], default: "prefer", required: false },
@@ -885,7 +885,7 @@ const ConnectionFormStep = ({ typeInfo, selectedType, connectorIcons, saving, on
       </div>
 
       {/* Dynamic fields */}
-      <div className="space-y-3 max-h-64 overflow-y-auto">
+      <div className="space-y-3 max-h-96 overflow-y-auto">
         {(typeInfo.fields || []).filter(f => !f.show_when).map(field => (
           <div key={field.name}>
             <label className="block text-xs font-semibold text-slate-600 mb-1.5 uppercase tracking-wide">
@@ -958,21 +958,44 @@ const NewConnectionWizard = ({ connTypes, backendOnline, onClose, onConnectionCr
     setSaving(true);
     setTestRes(null);
     try {
-      const created = await apiFetch("/api/connections", {
+      // Use raw fetch so we can capture the actual backend error message
+      const headers = { "Content-Type": "application/json" };
+      if (_authToken) headers["Authorization"] = `Bearer ${_authToken}`;
+      const createRes = await fetch(`${API_BASE}/api/connections`, {
         method: "POST",
-        body: JSON.stringify({ name: connName, connector_type: selectedType, config: formData }),
+        headers,
+        body: JSON.stringify({ name: connName, connector_type: selectedType, ...formData, config: formData }),
       });
+      if (!createRes.ok) {
+        let detail = `Server error ${createRes.status}`;
+        try {
+          const body = await createRes.json();
+          // FastAPI 422 sends detail as array of validation error objects
+          if (Array.isArray(body.detail)) {
+            detail = body.detail.map(e => `${e.loc?.slice(-1)[0] || ''}: ${e.msg}`).join("; ");
+          } else {
+            detail = body.detail || JSON.stringify(body);
+          }
+        } catch (_) {}
+        setTestRes({ status: "error", message: detail });
+        return;
+      }
+      const created = await createRes.json();
       if (created && created.id) {
         setTesting(true);
-        const result = await apiFetch(`/api/connections/${created.id}/test`, { method: "POST" });
+        const testFetch = await fetch(`${API_BASE}/api/connections/${created.id}/test`, { method: "POST", headers });
         setTesting(false);
-        setTestRes(result);
-        if (result && result.status === "ok") {
+        let result = null;
+        try { result = await testFetch.json(); } catch (_) {}
+        // Backend returns { success: bool, message, error, latency_ms, server_version }
+        const normalized = result ? { ...result, status: result.success ? "ok" : "error" } : null;
+        setTestRes(normalized || { status: "error", message: "Test call failed" });
+        if (normalized && normalized.status === "ok") {
           await onConnectionCreated();
           setTimeout(onClose, 800);
         }
       } else {
-        setTestRes({ status: "error", message: "Failed to create connection" });
+        setTestRes({ status: "error", message: "Unexpected response from server" });
       }
     } catch (e) {
       setTestRes({ status: "error", message: String(e) });
@@ -1045,7 +1068,7 @@ const NewConnectionWizard = ({ connTypes, backendOnline, onClose, onConnectionCr
             }`}>
               {testRes.status === "ok"
                 ? "✅ Connection successful! Closing…"
-                : `❌ ${testRes.error || testRes.message || "Connection failed"}`}
+                : `❌ ${typeof (testRes.error || testRes.message) === "string" ? (testRes.error || testRes.message) : "Connection failed"}`}
             </div>
           )}
         </div>
@@ -1056,19 +1079,62 @@ const NewConnectionWizard = ({ connTypes, backendOnline, onClose, onConnectionCr
 
 
 // ─── DQ RULES TAB (module-level for stable React identity) ───────────────────
+const BLANK_FORM = { name: "", rule_type: "not_null", table_id: "", column_name: "", severity: "medium", description: "", parameters: {} };
+
 const RulesTab = () => {
   const [rules, setRules] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [showNew, setShowNew] = useState(false);
+  const [showForm, setShowForm] = useState(false);
+  const [editingId, setEditingId] = useState(null);   // null = create, string = edit
   const [templates, setTemplates] = useState([]);
   const [runResults, setRunResults] = useState({});
   const [running, setRunning] = useState({});
-  const [form, setForm] = useState({ name: "", rule_type: "not_null", table_id: "", column_name: "", severity: "medium", description: "", parameters: {} });
+  const [allTables, setAllTables] = useState([]);
+  const [tableColumns, setTableColumns] = useState([]);  // columns for selected table
+  const [form, setForm] = useState(BLANK_FORM);
 
   useEffect(() => {
     apiFetch("/api/rules/").then(d => { if (d) setRules(d); setLoading(false); });
     apiFetch("/api/rules/templates").then(d => { if (d) setTemplates(d); });
+    apiFetch("/api/connections").then(async conns => {
+      if (!conns) return;
+      const tableArrays = await Promise.all(
+        conns.map(c => apiFetch(`/api/connections/${c.id}/tables`).then(t => t || []))
+      );
+      setAllTables(tableArrays.flat());
+    });
   }, []);
+
+  // When table selection changes, fetch that table's columns
+  useEffect(() => {
+    if (!form.table_id) { setTableColumns([]); return; }
+    const tbl = allTables.find(t => t.id === form.table_id);
+    if (!tbl) return;
+    apiFetch(`/api/connections/${tbl.connection_id}/tables/${tbl.id}/columns`)
+      .then(cols => { if (cols) setTableColumns(cols); else setTableColumns([]); });
+  }, [form.table_id, allTables]);
+
+  const openCreate = () => { setForm(BLANK_FORM); setEditingId(null); setShowForm(true); };
+  const openEdit   = (rule) => {
+    setForm({
+      name:        rule.name,
+      rule_type:   rule.rule_type,
+      table_id:    rule.table_id,
+      column_name: rule.column_name || "",
+      severity:    rule.severity,
+      description: rule.description || "",
+      sql:         rule.parameters?.sql || "",
+      pattern:     rule.parameters?.pattern || "",
+      threshold:   rule.parameters?.threshold ?? "",
+      min_rows:    rule.parameters?.min_rows ?? "",
+      max_age_hours: rule.parameters?.max_age_hours ?? 24,
+      ts_col:      rule.parameters?.timestamp_col || "updated_at",
+      parameters:  rule.parameters || {},
+    });
+    setEditingId(rule.id);
+    setShowForm(true);
+  };
+  const closeForm = () => { setShowForm(false); setEditingId(null); setForm(BLANK_FORM); };
 
   const severityColor = { low: "text-blue-500 bg-blue-50", medium: "text-yellow-600 bg-yellow-50", high: "text-orange-500 bg-orange-50", critical: "text-red-600 bg-red-50" };
   const statusColor   = { pass: "text-green-600 bg-green-50", fail: "text-red-600 bg-red-50", error: "text-slate-500 bg-slate-100" };
@@ -1097,8 +1163,13 @@ const RulesTab = () => {
                    : form.rule_type === "freshness"  ? { max_age_hours: parseInt(form.max_age_hours || 24), timestamp_col: form.ts_col || "updated_at" }
                    : {};
     const body = { ...form, parameters: paramStr };
-    const res = await apiFetch("/api/rules/", { method: "POST", body: JSON.stringify(body) });
-    if (res) { setRules(prev => [res, ...prev]); setShowNew(false); setForm({ name: "", rule_type: "not_null", table_id: "", column_name: "", severity: "medium", description: "", parameters: {} }); }
+    if (editingId) {
+      const res = await apiFetch(`/api/rules/${editingId}`, { method: "PUT", body: JSON.stringify(body) });
+      if (res) { setRules(prev => prev.map(r => r.id === editingId ? res : r)); closeForm(); }
+    } else {
+      const res = await apiFetch("/api/rules/", { method: "POST", body: JSON.stringify(body) });
+      if (res) { setRules(prev => [res, ...prev]); closeForm(); }
+    }
   };
 
   return (
@@ -1113,7 +1184,7 @@ const RulesTab = () => {
             <button onClick={async () => { const r = await apiFetch("/api/rules/run-all", { method: "POST" }); if (r) alert(`Ran ${r.total} rules: ${r.passed} passed, ${r.failed} failed`); }} className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg text-sm font-medium hover:bg-green-700">
               <Play className="w-4 h-4" /> Run All
             </button>
-            <button onClick={() => setShowNew(true)} className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700">
+            <button onClick={openCreate} className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700">
               <Plus className="w-4 h-4" /> New Rule
             </button>
           </div>
@@ -1134,10 +1205,10 @@ const RulesTab = () => {
           ))}
         </div>
 
-        {/* New Rule form */}
-        {showNew && (
-          <div className="bg-white border border-slate-200 rounded-xl p-6 shadow-sm">
-            <h3 className="font-semibold text-slate-800 mb-4">Create Rule</h3>
+        {/* Create / Edit Rule form */}
+        {showForm && (
+          <div className="bg-white border border-blue-200 rounded-xl p-6 shadow-sm">
+            <h3 className="font-semibold text-slate-800 mb-4">{editingId ? "Edit Rule" : "Create Rule"}</h3>
             <div className="grid grid-cols-2 gap-4">
               <div><label className="text-xs font-medium text-slate-600">Rule Name</label><input className="mt-1 w-full border border-slate-200 rounded-lg px-3 py-2 text-sm" placeholder="e.g. Orders must have valid customer" value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} /></div>
               <div><label className="text-xs font-medium text-slate-600">Rule Type</label>
@@ -1145,8 +1216,26 @@ const RulesTab = () => {
                   {templates.map(t => <option key={t.rule_type} value={t.rule_type}>{t.name}</option>)}
                 </select>
               </div>
-              <div><label className="text-xs font-medium text-slate-600">Table ID</label><input className="mt-1 w-full border border-slate-200 rounded-lg px-3 py-2 text-sm font-mono text-xs" placeholder="paste table ID from catalog" value={form.table_id} onChange={e => setForm(f => ({ ...f, table_id: e.target.value }))} /></div>
-              <div><label className="text-xs font-medium text-slate-600">Column Name</label><input className="mt-1 w-full border border-slate-200 rounded-lg px-3 py-2 text-sm" placeholder="e.g. customer_id" value={form.column_name} onChange={e => setForm(f => ({ ...f, column_name: e.target.value }))} /></div>
+              <div><label className="text-xs font-medium text-slate-600">Table</label>
+                <select className="mt-1 w-full border border-slate-200 rounded-lg px-3 py-2 text-sm" value={form.table_id} onChange={e => setForm(f => ({ ...f, table_id: e.target.value, column_name: "" }))}>
+                  <option value="">— select a table —</option>
+                  {allTables.map(t => (
+                    <option key={t.id} value={t.id}>{t.connection_name} / {t.schema_name}.{t.table_name}</option>
+                  ))}
+                </select>
+              </div>
+              <div><label className="text-xs font-medium text-slate-600">Column {tableColumns.length > 0 ? `(${tableColumns.length} available)` : ""}</label>
+                {tableColumns.length > 0 ? (
+                  <select className="mt-1 w-full border border-slate-200 rounded-lg px-3 py-2 text-sm" value={form.column_name} onChange={e => setForm(f => ({ ...f, column_name: e.target.value }))}>
+                    <option value="">— select a column (optional) —</option>
+                    {tableColumns.map(c => (
+                      <option key={c.column_name} value={c.column_name}>{c.column_name}{c.data_type ? ` (${c.data_type})` : ""}</option>
+                    ))}
+                  </select>
+                ) : (
+                  <input className="mt-1 w-full border border-slate-200 rounded-lg px-3 py-2 text-sm" placeholder={form.table_id ? "Loading columns…" : "Select a table first"} value={form.column_name} onChange={e => setForm(f => ({ ...f, column_name: e.target.value }))} />
+                )}
+              </div>
               <div><label className="text-xs font-medium text-slate-600">Severity</label>
                 <select className="mt-1 w-full border border-slate-200 rounded-lg px-3 py-2 text-sm" value={form.severity} onChange={e => setForm(f => ({ ...f, severity: e.target.value }))}>
                   {["low","medium","high","critical"].map(s => <option key={s} value={s}>{s.charAt(0).toUpperCase()+s.slice(1)}</option>)}
@@ -1164,8 +1253,8 @@ const RulesTab = () => {
               {form.rule_type === "custom_sql" && <div className="col-span-2"><label className="text-xs font-medium text-slate-600">SQL (0 rows = pass)</label><textarea className="mt-1 w-full border border-slate-200 rounded-lg px-3 py-2 text-sm font-mono" rows={3} placeholder="SELECT * FROM schema.table WHERE condition_fails" value={form.sql||""} onChange={e => setForm(f => ({ ...f, sql: e.target.value }))} /></div>}
             </div>
             <div className="flex justify-end gap-2 mt-4">
-              <button onClick={() => setShowNew(false)} className="px-4 py-2 text-sm text-slate-600 hover:bg-slate-100 rounded-lg">Cancel</button>
-              <button onClick={saveRule} disabled={!form.name || !form.table_id} className="px-4 py-2 bg-blue-600 text-white text-sm rounded-lg font-medium hover:bg-blue-700 disabled:opacity-50">Save Rule</button>
+              <button onClick={closeForm} className="px-4 py-2 text-sm text-slate-600 hover:bg-slate-100 rounded-lg">Cancel</button>
+              <button onClick={saveRule} disabled={!form.name || !form.table_id} className="px-4 py-2 bg-blue-600 text-white text-sm rounded-lg font-medium hover:bg-blue-700 disabled:opacity-50">{editingId ? "Update Rule" : "Save Rule"}</button>
             </div>
           </div>
         )}
@@ -1203,6 +1292,9 @@ const RulesTab = () => {
                     <div className="flex items-center gap-2 flex-shrink-0">
                       <button onClick={() => runRule(rule.id)} disabled={running[rule.id]} className="flex items-center gap-1 px-3 py-1.5 bg-green-50 text-green-700 hover:bg-green-100 rounded-lg text-xs font-medium disabled:opacity-50">
                         {running[rule.id] ? <RefreshCw className="w-3 h-3 animate-spin" /> : <Play className="w-3 h-3" />} Run
+                      </button>
+                      <button onClick={() => openEdit(rule)} className="flex items-center gap-1 px-3 py-1.5 bg-blue-50 text-blue-700 hover:bg-blue-100 rounded-lg text-xs font-medium">
+                        <Pencil className="w-3 h-3" /> Edit
                       </button>
                       <button onClick={() => deleteRule(rule.id)} className="p-1.5 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-lg">
                         <Trash2 className="w-4 h-4" />

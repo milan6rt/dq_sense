@@ -64,16 +64,18 @@ if git diff --cached --quiet; then
 else
     echo "💾 Committing..."
     git commit -m "$(cat <<'EOF'
-Connect demo PostgreSQL schema; fix backend startup deps
+Fix DQ Rules: edit flow, column dropdown, columns API endpoint
 
-- Made httpx and python-jose imports optional in auth.py so the
-  backend starts cleanly without Google OAuth env vars configured
-- Commented out pyodbc in requirements.txt (requires native ODBC
-  Driver 18 installed separately — not needed for PostgreSQL)
-- Added Restart Backend.command: kills old backend on port 8000,
-  wipes dataiq.db, reinstalls deps, starts new backend cleanly
-- Demo schema (customers, products, orders, order_items, employees,
-  events) discovered and profiled — 98% avg quality score
+- RulesTab: full edit-rule flow with pre-populated form (BLANK_FORM
+  constant, editingId state, openEdit/openCreate/closeForm helpers,
+  PUT /api/rules/:id for updates vs POST for create)
+- RulesTab: column field becomes a dropdown when table is selected;
+  fetches /api/connections/:conn/tables/:table/columns on table change;
+  shows column count badge e.g. "Column (18 available)"
+- Edit pencil button added to each rule card
+- connections.py: added GET /api/connections/{conn}/tables/{table}/columns
+  endpoint; fixed AttributeError (model field is distinct_count, not
+  unique_count) that caused uvicorn worker to drop the connection
 EOF
 )"
     echo ""

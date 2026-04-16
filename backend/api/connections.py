@@ -9,6 +9,7 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from db.database import get_db
+from db.models import DiscoveredColumn, DiscoveredTable
 from services.connection_service import (
     create_connection, list_connections, get_connection, update_connection,
     delete_connection, test_connection, discover_schemas, discover_tables,
@@ -176,6 +177,25 @@ def get_tables(connection_id: str, db: Session = Depends(get_db)):
         return get_all_tables(db, connection_id)
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc))
+
+
+@router.get("/{connection_id}/tables/{table_id}/columns")
+def get_columns(connection_id: str, table_id: str, db: Session = Depends(get_db)):
+    """Return all profiled columns for a discovered table."""
+    table = db.query(DiscoveredTable).filter_by(id=table_id, connection_id=connection_id).first()
+    if not table:
+        raise HTTPException(status_code=404, detail="Table not found")
+    cols = db.query(DiscoveredColumn).filter_by(table_id=table_id).order_by(DiscoveredColumn.column_name).all()
+    return [
+        {
+            "column_name":  c.column_name,
+            "data_type":    c.data_type,
+            "nullable":     c.nullable,
+            "null_count":   c.null_count,
+            "unique_count": c.distinct_count,  # model field is distinct_count
+        }
+        for c in cols
+    ]
 
 
 # ── Profiling ─────────────────────────────────────────────────────────────────
