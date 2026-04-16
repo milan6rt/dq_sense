@@ -1,0 +1,18 @@
+fastapi>=0.110.0
+uvicorn[standard]>=0.29.0
+websockets>=12.0
+pydantic>=2.6.0
+
+# Database
+sqlalchemy>=2.0.0
+aiosqlite>=0.19.0
+
+# Connectors
+psycopg2-binary>=2.9.0      # PostgreSQL
+pyodbc>=4.0.0               # Microsoft Fabric / SQL Server (needs ODBC Driver 18)
+
+# Credential encryption
+cryptography>=41.0.0
+
+# Optional: Microsoft Fabric Service Principal auth
+# azure-identity>=1.15.0
