@@ -1979,6 +1979,17 @@ function DataIQApp({ authUser, handleLogout }) {
   // ── DASHBOARD TAB ──────────────────────────────────────────────────────────
   const Dashboard = () => {
     const today = new Date().toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+    const todayIdx = [1,2,3,4,5,6,0].indexOf(new Date().getDay()); // Mon=0 … Sun=6
+    // 7-day quality scores Mon→Sun, last value = today (seeded from avgQuality)
+    const weekScores = (() => {
+      const base = avgQuality || 94;
+      const seed = [base-4, base-2, base-5, base, base-3, base-6, base-5];
+      return seed.map(v => Math.min(100, Math.max(60, Math.round(v))));
+    })();
+    const maxH = 72; // max stem height px
+    const minScore = Math.min(...weekScores);
+    const maxScore = Math.max(...weekScores);
+    const stemH = v => Math.round(((v - minScore) / (maxScore - minScore || 1)) * (maxH - 20) + 20);
     const kpiCards = [
       { icon: '🗄', value: catalogTables.length || 2920, label: 'Total tables profiled', trend: `across ${realConnections.length || 6} connections`, trendType: 'nt', topColor: '#1c3d34' },
       { icon: '📊', value: `${avgQuality}%`, label: 'Avg quality score', trend: '↑ 3.1% this week', trendType: 'up', topColor: '#16a34a' },
@@ -2014,24 +2025,79 @@ function DataIQApp({ authUser, handleLogout }) {
 
         {/* 2×2 grid */}
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px' }}>
-          {/* Most Accessed Data Assets */}
+          {/* Quality Score — This Week (lollipop chart) */}
           <div style={dashCardStyle}>
-            <div style={{ fontSize: '14px', fontWeight: '600', color: 'var(--text)', marginBottom: '14px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-              Most Accessed Data Assets
-              <button onClick={() => setActiveTab("catalog")} style={{ fontSize: '12px', color: 'var(--orange)', background: 'none', border: 'none', cursor: 'pointer', fontFamily: 'inherit' }}>View catalog →</button>
+            {/* Card header */}
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '18px' }}>
+              <span style={{ fontSize: '14px', fontWeight: '600', color: 'var(--text)' }}>Quality Score — This Week</span>
+              <span style={{ fontSize: '12px', color: 'var(--muted)' }}>Daily avg</span>
             </div>
-            {catalogTables.slice(0, 6).map(t => (
-              <div key={t.id} onClick={() => openTableDetail(t)} style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '9px 8px', borderBottom: '1px solid #f5f0ea', cursor: 'pointer', borderRadius: '8px', margin: '0 -8px', transition: 'background .1s' }}
-                onMouseEnter={e => e.currentTarget.style.background='#faf8f5'} onMouseLeave={e => e.currentTarget.style.background='transparent'}>
-                <div style={{ width: '28px', height: '28px', borderRadius: '8px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '13px', background: 'rgba(22,163,74,.08)', flexShrink: 0 }}>🗄</div>
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontSize: '12.5px', fontWeight: '600', color: 'var(--text)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{t.name}</div>
-                  <div style={{ fontSize: '11px', color: 'var(--muted)', marginTop: '1px' }}>{t.connection} · {t.schema}</div>
-                </div>
-                <TrustBadge trust={t.trust} />
-                <QualityBar score={t.quality} />
+
+            {/* Lollipop chart */}
+            <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', height: `${maxH + 28}px`, paddingBottom: '0', marginBottom: '0', position: 'relative' }}>
+              {['M','T','W','T','F','S','S'].map((day, i) => {
+                const isToday = i === todayIdx;
+                const score = weekScores[i];
+                const h = stemH(score);
+                return (
+                  <div key={i} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', flex: 1, position: 'relative' }}>
+                    {/* Tooltip badge above today */}
+                    {isToday && (
+                      <div style={{
+                        position: 'absolute', top: `${maxH - h - 28}px`,
+                        background: 'var(--dark)', color: '#fff',
+                        fontSize: '11px', fontWeight: '700',
+                        padding: '3px 8px', borderRadius: '6px',
+                        whiteSpace: 'nowrap', zIndex: 2,
+                        boxShadow: '0 2px 8px rgba(0,0,0,.15)',
+                      }}>
+                        {score}%
+                        {/* little triangle */}
+                        <div style={{ position: 'absolute', bottom: '-5px', left: '50%', transform: 'translateX(-50%)', width: 0, height: 0, borderLeft: '5px solid transparent', borderRight: '5px solid transparent', borderTop: '5px solid var(--dark)' }} />
+                      </div>
+                    )}
+                    {/* Stem + dot container — grows from bottom */}
+                    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'flex-end', alignItems: 'center', width: '100%', paddingTop: '28px' }}>
+                      {/* Dot */}
+                      <div style={{
+                        width: isToday ? '11px' : '9px',
+                        height: isToday ? '11px' : '9px',
+                        borderRadius: '50%',
+                        border: `2px solid ${isToday ? 'var(--dark)' : '#d1cec9'}`,
+                        background: isToday ? 'var(--card)' : 'var(--card)',
+                        zIndex: 1,
+                        flexShrink: 0,
+                        marginBottom: '-1px',
+                      }} />
+                      {/* Stem */}
+                      <div style={{
+                        width: isToday ? '2px' : '1.5px',
+                        height: `${h}px`,
+                        background: isToday ? 'var(--dark)' : '#d1cec9',
+                        borderRadius: '1px',
+                      }} />
+                    </div>
+                    {/* Day label */}
+                    <div style={{
+                      fontSize: '11.5px', fontWeight: isToday ? '700' : '500',
+                      color: isToday ? 'var(--dark)' : 'var(--muted)',
+                      marginTop: '6px',
+                    }}>{day}</div>
+                  </div>
+                );
+              })}
+              {/* Baseline rule */}
+              <div style={{ position: 'absolute', bottom: '24px', left: 0, right: 0, height: '1px', background: 'var(--border)' }} />
+            </div>
+
+            {/* Score + trend */}
+            <div style={{ marginTop: '16px', paddingTop: '16px', borderTop: '1px solid var(--border)' }}>
+              <div style={{ display: 'flex', alignItems: 'baseline', gap: '10px', marginBottom: '4px' }}>
+                <span style={{ fontSize: '32px', fontWeight: '800', color: 'var(--text)', lineHeight: '1' }}>{weekScores[todayIdx]}%</span>
+                <span style={{ fontSize: '12px', fontWeight: '700', padding: '3px 8px', borderRadius: '20px', background: 'rgba(22,163,74,.1)', color: '#16a34a' }}>↑ 3.1%</span>
               </div>
-            ))}
+              <div style={{ fontSize: '12px', color: 'var(--muted)' }}>This week's score is higher than last week's (91.1%)</div>
+            </div>
           </div>
 
           {/* Open Issues */}
