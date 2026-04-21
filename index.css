@@ -2,8 +2,21 @@
 @tailwind components;
 @tailwind utilities;
 
+:root {
+  --bg: #f0ebe4;
+  --card: #fff;
+  --dark: #1c3d34;
+  --dark2: #254d42;
+  --orange: #e8622b;
+  --green: #16a34a;
+  --text: #1a2e28;
+  --muted: #8d9e98;
+  --border: #e0dbd5;
+}
+
 body {
   margin: 0;
+  background: var(--bg);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
@@ -15,9 +28,57 @@ html, body, #root {
 
 /* Custom scrollbar */
 ::-webkit-scrollbar { width: 6px; height: 6px; }
-::-webkit-scrollbar-track { background: #F1F5F9; }
-::-webkit-scrollbar-thumb { background: #CBD5E1; border-radius: 3px; }
-::-webkit-scrollbar-thumb:hover { background: #94A3B8; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: #ccc6bf; border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: #b8b2aa; }
 
 /* Font mono override */
 .font-mono { font-family: ui-monospace, 'Cascadia Code', 'Source Code Pro', Menlo, Consolas, monospace !important; }
+
+/* ─── Page title accent dot ─────────────────────────── */
+.page-title-dot::after {
+  content: '';
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--orange);
+  margin-left: 8px;
+  vertical-align: middle;
+  margin-bottom: 2px;
+}
+
+/* ─── Trust badges ──────────────────────────────────── */
+.trust-gold { background: #fef9c3; color: #a16207; }
+.trust-silver { background: #f3f4f6; color: #4b5563; }
+.trust-bronze { background: #fef3c7; color: #92400e; }
+
+/* ─── Rule type badges ──────────────────────────────── */
+.rtb { font-size: 10.5px; font-weight: 700; padding: 3px 8px; border-radius: 6px; white-space: nowrap; }
+.rtb-not_null { background: rgba(59,130,246,.1); color: #1d4ed8; }
+.rtb-unique { background: rgba(168,85,247,.1); color: #7c3aed; }
+.rtb-min_value { background: rgba(16,185,129,.1); color: #065f46; }
+.rtb-max_value { background: rgba(245,158,11,.1); color: #92400e; }
+.rtb-regex { background: rgba(239,68,68,.08); color: #991b1b; }
+.rtb-freshness { background: rgba(6,182,212,.1); color: #0e7490; }
+.rtb-row_count { background: rgba(99,102,241,.1); color: #3730a3; }
+.rtb-custom_sql { background: rgba(28,61,52,.1); color: var(--dark); }
+
+/* ─── Scheduler result badges ───────────────────────── */
+.res-badge { display: inline-flex; align-items: center; gap: 4px; font-size: 11px; font-weight: 700; padding: 3px 10px; border-radius: 20px; }
+.res-badge.pass { background: rgba(22,163,74,.1); color: #16a34a; }
+.res-badge.fail { background: rgba(232,98,43,.12); color: var(--orange); }
+.res-badge.running { background: rgba(99,102,241,.1); color: #4f46e5; }
+.res-badge.pending { background: var(--bg); color: var(--muted); }
+
+/* ─── Cron pill ─────────────────────────────────────── */
+.cron-pill { display: inline-flex; align-items: center; gap: 5px; background: var(--bg); border-radius: 20px; padding: 3px 10px; font-size: 11.5px; font-weight: 500; }
+
+/* ─── Brand buttons ─────────────────────────────────── */
+.btn-brand-orange { width: 100%; padding: 9px 12px; background: var(--orange); color: #fff; border: none; border-radius: 10px; font-size: 13px; font-weight: 600; cursor: pointer; transition: opacity .15s; font-family: inherit; }
+.btn-brand-orange:hover { opacity: .9; }
+
+/* ─── Live dot animation ────────────────────────────── */
+.live-dot { width: 6px; height: 6px; border-radius: 50%; background: #16a34a; animation: iq-pulse 1.8s ease-in-out infinite; }
+@keyframes iq-pulse { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:.4;transform:scale(.8)} }
+@keyframes iq-spin { to { transform: rotate(360deg); } }

@@ -1173,7 +1173,7 @@ const RulesTab = () => {
   };
 
   return (
-    <div className="flex-1 overflow-auto bg-slate-50">
+    <div className="flex-1 overflow-auto" style={{ background: "var(--bg)" }}>
       <div className="p-6 max-w-6xl mx-auto space-y-6">
         <div className="flex items-center justify-between">
           <div>
@@ -1358,7 +1358,7 @@ const SchedulerTab = () => {
   ];
 
   return (
-    <div className="flex-1 overflow-auto bg-slate-50">
+    <div className="flex-1 overflow-auto" style={{ background: "var(--bg)" }}>
       <div className="p-6 max-w-6xl mx-auto space-y-6">
         <div className="flex items-center justify-between">
           <div>
@@ -1433,20 +1433,21 @@ const SchedulerTab = () => {
         {history.length > 0 && (
           <div>
             <h2 className="text-lg font-semibold text-slate-700 mb-3">Recent Run History</h2>
-            <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm">
+            <div style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: '16px', overflow: 'hidden' }}>
               <table className="w-full text-sm">
-                <thead className="bg-slate-50 border-b border-slate-200">
-                  <tr>{["Status","Tables Scanned","Issues Found","Quality Score","Triggered By","Started At"].map(h => <th key={h} className="px-4 py-2.5 text-left text-xs font-semibold text-slate-500">{h}</th>)}</tr>
+                <thead style={{ background: 'var(--bg)', borderBottom: '1px solid var(--border)' }}>
+                  <tr>{["Status","Tables Scanned","Issues Found","Quality Score","Triggered By","Started At"].map(h => <th key={h} className="px-4 py-2.5 text-left" style={{ fontSize: '11px', fontWeight: '700', letterSpacing: '.05em', textTransform: 'uppercase', color: 'var(--muted)' }}>{h}</th>)}</tr>
                 </thead>
                 <tbody>
                   {history.slice(0, 10).map(run => (
-                    <tr key={run.id} className="border-b border-slate-100 hover:bg-slate-50">
+                    <tr key={run.id} style={{ borderBottom: '1px solid #f5f0ea' }}
+                      onMouseEnter={e => e.currentTarget.style.background='#faf8f5'} onMouseLeave={e => e.currentTarget.style.background='transparent'}>
                       <td className="px-4 py-2.5"><span className={`text-xs px-2 py-0.5 rounded-full font-medium ${statusColor[run.status] || "text-slate-500 bg-slate-100"}`}>{run.status}</span></td>
-                      <td className="px-4 py-2.5 text-slate-700">{run.tables_scanned}</td>
-                      <td className="px-4 py-2.5 text-slate-700">{run.issues_found}</td>
-                      <td className="px-4 py-2.5 text-slate-700">{run.quality_score ? `${run.quality_score.toFixed(1)}%` : "—"}</td>
-                      <td className="px-4 py-2.5 text-slate-500 capitalize">{run.triggered_by}</td>
-                      <td className="px-4 py-2.5 text-slate-400 text-xs">{run.started_at ? new Date(run.started_at).toLocaleString() : "—"}</td>
+                      <td className="px-4 py-2.5" style={{ color: 'var(--text)' }}>{run.tables_scanned}</td>
+                      <td className="px-4 py-2.5" style={{ color: 'var(--text)' }}>{run.issues_found}</td>
+                      <td className="px-4 py-2.5" style={{ color: 'var(--text)' }}>{run.quality_score ? `${run.quality_score.toFixed(1)}%` : "—"}</td>
+                      <td className="px-4 py-2.5" style={{ color: 'var(--muted)', textTransform: 'capitalize' }}>{run.triggered_by}</td>
+                      <td className="px-4 py-2.5" style={{ color: 'var(--muted)', fontSize: '11.5px' }}>{run.started_at ? new Date(run.started_at).toLocaleString() : "—"}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -1459,6 +1460,267 @@ const SchedulerTab = () => {
   );
 };
 
+// ─── INFO PANEL (module-level for stable React identity) ──────────────────────
+const InfoPanel = ({ activeTab, catalogTables, catalogIssues, mockAgents, realConnections, backendOnline, onAddConnection }) => {
+  // Shared style helpers
+  const IC = ({ children, style = {} }) => (
+    <div style={{ background: 'var(--card)', borderRadius: '16px', padding: '16px', ...style }}>{children}</div>
+  );
+  const SecLbl = ({ children }) => (
+    <div style={{ fontSize: '10px', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '0.07em', color: 'var(--orange)' }}>{children}</div>
+  );
+  const SecHdr = ({ label, right }) => (
+    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '10px' }}>
+      <SecLbl>{label}</SecLbl>
+      {right}
+    </div>
+  );
+  const LiveDot = () => (
+    <div style={{ display: 'flex', alignItems: 'center', gap: '5px', fontSize: '11px', color: '#16a34a', fontWeight: '500' }}>
+      <div className="live-dot" /><span>Live</span>
+    </div>
+  );
+  const Stats3 = ({ items }) => (
+    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', paddingTop: '10px', borderTop: '1px solid var(--border)' }}>
+      {items.map(([num, lbl, color]) => (
+        <div key={lbl} style={{ textAlign: 'center' }}>
+          <div style={{ display: 'block', fontSize: '17px', fontWeight: '700', color: color || 'var(--text)' }}>{num}</div>
+          <div style={{ fontSize: '10px', color: 'var(--muted)' }}>{lbl}</div>
+        </div>
+      ))}
+    </div>
+  );
+  const OrangeBtn = ({ children, onClick }) => (
+    <button onClick={onClick} className="btn-brand-orange">{children}</button>
+  );
+  const DarkBtn = ({ children, onClick }) => (
+    <button onClick={onClick} style={{ width: '100%', padding: '9px 12px', background: 'var(--dark)', color: '#fff', border: 'none', borderRadius: '10px', fontSize: '13px', fontWeight: '600', cursor: 'pointer', fontFamily: 'inherit' }}>{children}</button>
+  );
+  const FgOpt = ({ label, count, checked = true }) => (
+    <label style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '4px 0', fontSize: '12.5px', color: 'var(--text)', cursor: 'pointer' }}>
+      <input type="checkbox" defaultChecked={checked} style={{ accentColor: 'var(--dark)' }} /> {label}
+      {count !== undefined && <span style={{ marginLeft: 'auto', fontSize: '11px', fontWeight: '600', color: 'var(--muted)' }}>{count}</span>}
+    </label>
+  );
+  const ScanItem = ({ icon, name, meta, state }) => (
+    <div style={{ display: 'flex', alignItems: 'center', gap: '9px', padding: '7px 8px', borderRadius: '8px', background: state === 'done' ? 'rgba(22,163,74,.06)' : state === 'running' ? 'rgba(108,71,255,.06)' : state === 'fail' ? 'rgba(232,98,43,.06)' : 'transparent' }}>
+      <span style={{ fontSize: '13px', width: '18px', textAlign: 'center', display: 'inline-block', animation: state === 'running' ? 'iq-spin 1.2s linear infinite' : 'none' }}>{icon}</span>
+      <div>
+        <div style={{ fontSize: '12.5px', fontWeight: '600', color: 'var(--text)' }}>{name}</div>
+        <div style={{ fontSize: '11px', color: 'var(--muted)', marginTop: '1px' }}>{meta}</div>
+      </div>
+    </div>
+  );
+
+  const highIssues = catalogIssues.filter(i => i.severity === "high").length;
+  const medIssues = catalogIssues.filter(i => i.severity === "medium").length;
+  const lowIssues = catalogIssues.filter(i => i.severity === "low").length;
+
+  const panels = {
+    dashboard: () => <>
+      <IC>
+        <SecHdr label="Platform Health" right={<LiveDot />} />
+        <div style={{ display: 'flex', alignItems: 'baseline', gap: '8px', margin: '8px 0 4px' }}>
+          <div style={{ fontSize: '32px', fontWeight: '800', color: 'var(--text)', lineHeight: '1' }}>94.2<span style={{ fontSize: '17px', fontWeight: '600' }}>%</span></div>
+          <div style={{ fontSize: '11px', fontWeight: '700', background: 'rgba(22,163,74,.1)', color: '#16a34a', padding: '2px 8px', borderRadius: '20px' }}>↑ 3.1%</div>
+        </div>
+        <div style={{ fontSize: '11.5px', color: 'var(--muted)', marginBottom: '10px' }}>Avg quality across all tables</div>
+        <Stats3 items={[[realConnections.length || 6, 'Connections'], [highIssues, 'Open Issues', 'var(--orange)'], ['247', 'Rules Run']]} />
+      </IC>
+      <IC>
+        <SecHdr label="Today's Scans" right={<span style={{ fontSize: '12px', color: 'var(--muted)', cursor: 'pointer' }}>View all ›</span>} />
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+          <ScanItem icon="✓" name="Full Profile Scan" meta="Operational DB · 9:00am" state="done" />
+          <ScanItem icon="✓" name="Rules Validation" meta="Finance schema · 9:45am" state="done" />
+          <ScanItem icon="↻" name="PII Scanner" meta="HR data · Running…" state="running" />
+          <ScanItem icon="◦" name="Anomaly Check" meta="Enterprise DW · 2:00pm" state="pending" />
+        </div>
+      </IC>
+      <IC>
+        <SecHdr label="Quick Actions" />
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
+          {[['🔗', 'Add connection'], ['⚡', 'Add DQ rule'], ['📅', 'Scheduled scans'], ['🚨', 'View all issues']].map(([ic, lbl]) => (
+            <button key={lbl} style={{ width: '100%', textAlign: 'left', padding: '8px 12px', background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: '10px', fontSize: '12.5px', fontWeight: '500', color: 'var(--text)', cursor: 'pointer', fontFamily: 'inherit' }}>{ic} &nbsp;{lbl}</button>
+          ))}
+        </div>
+      </IC>
+    </>,
+
+    scheduler: () => <>
+      <IC>
+        <SecHdr label="Schedule Overview" right={<LiveDot />} />
+        <Stats3 items={[['7', 'Active jobs', '#16a34a'], ['1', 'Failing', 'var(--orange)'], ['23', 'Runs today']]} />
+      </IC>
+      <IC>
+        <OrangeBtn>+ Add Scheduled Scan</OrangeBtn>
+        <div style={{ marginTop: '12px' }}>
+          <SecHdr label="Quick Info" />
+          <p style={{ fontSize: '12.5px', color: 'var(--text)', lineHeight: '1.5', marginBottom: '8px' }}>Automate profiling, validation, and anomaly detection on any cron schedule.</p>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
+            {[['var(--orange)','Cron or interval-based triggers'],['#16a34a','Slack & email alerts on failure'],['var(--orange)','AI detects anomalies mid-scan'],['#16a34a','Full run history & log viewer']].map(([c,t]) => (
+              <div key={t} style={{ display: 'flex', alignItems: 'center', gap: '7px', fontSize: '12px', color: 'var(--muted)' }}><span style={{ color: c }}>●</span> {t}</div>
+            ))}
+          </div>
+        </div>
+      </IC>
+      <IC>
+        <SecHdr label="Recent Run History" />
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+          <ScanItem icon="✓" name="Weekly Full Profile" meta="All connections · just now · 4m 12s" state="done" />
+          <ScanItem icon="✓" name="Rules Validation — Finance" meta="Analytics Cluster · 45m ago · 1m 38s" state="done" />
+          <ScanItem icon="↻" name="Anomaly Detection" meta="Marketing CDP · Running…" state="running" />
+          <ScanItem icon="✗" name="Schema Sync — Staging" meta="Staging Env · 8h ago · Failed" state="fail" />
+          <ScanItem icon="✓" name="Freshness Check" meta="Data Lake · 10h ago · 22s" state="done" />
+        </div>
+      </IC>
+    </>,
+
+    connections: () => <>
+      <IC>
+        <SecHdr label="Connection Health" right={<LiveDot />} />
+        <Stats3 items={[[realConnections.filter(c=>c.status==='ok').length||5,'Connected','#16a34a'],[realConnections.filter(c=>c.status==='warning').length||1,'Warning','var(--orange)'],[(realConnections.reduce((a,c)=>a+(c.table_count||0),0)||2920).toLocaleString(),'Tables']]} />
+      </IC>
+      <IC>
+        <SecHdr label="Filter by Type" />
+        {['PostgreSQL','Snowflake','BigQuery','Redshift','S3/Hive'].map((t,i) => <FgOpt key={t} label={t} count={[2,1,1,1,1][i]} />)}
+      </IC>
+      <IC>
+        <SecHdr label="Filter by Status" />
+        <FgOpt label="Connected" count={5} />
+        <FgOpt label="Warning" count={1} />
+        <FgOpt label="Offline" count={0} checked={false} />
+      </IC>
+      <IC><DarkBtn onClick={onAddConnection}>+ Add Connection</DarkBtn></IC>
+    </>,
+
+    catalog: () => <>
+      <IC>
+        <SecLbl>Search</SecLbl>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: '10px', padding: '8px 12px', marginTop: '8px' }}>
+          <span>🔍</span>
+          <input placeholder="Table name, tag, steward…" style={{ border: 'none', background: 'transparent', fontSize: '12.5px', color: 'var(--text)', outline: 'none', width: '100%', fontFamily: 'inherit' }} />
+        </div>
+      </IC>
+      <IC>
+        <SecHdr label="Domain" />
+        {[['Finance',3],['Marketing',3],['Sales',2],['Product',1],['HR',1]].map(([d,c]) => <FgOpt key={d} label={d} count={c} />)}
+      </IC>
+      <IC>
+        <SecHdr label="Trust Level" />
+        <FgOpt label="★ Gold" count={4} />
+        <FgOpt label="★ Silver" count={4} />
+        <FgOpt label="★ Bronze" count={2} />
+      </IC>
+      <IC>
+        <SecHdr label="Quality" />
+        <FgOpt label="≥ 90% (Good)" count={6} />
+        <FgOpt label="75–89% (Fair)" count={3} />
+        <FgOpt label="< 75% (Poor)" count={1} />
+      </IC>
+    </>,
+
+    quality: () => <>
+      <IC>
+        <SecHdr label="Severity Breakdown" />
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: '8px', marginBottom: '12px' }}>
+          {[['hi',highIssues||2,'High','rgba(232,98,43,.1)','var(--orange)'],['med',medIssues||3,'Medium','rgba(246,185,77,.1)','#a07000'],['lo',lowIssues||1,'Low','rgba(59,130,246,.08)','#1d4ed8']].map(([k,n,l,bg,c]) => (
+            <div key={k} style={{ borderRadius: '10px', padding: '10px 8px', textAlign: 'center', background: bg }}>
+              <span style={{ fontSize: '20px', fontWeight: '800', display: 'block', color: c }}>{n}</span>
+              <span style={{ fontSize: '10.5px', color: 'var(--muted)' }}>{l}</span>
+            </div>
+          ))}
+        </div>
+      </IC>
+      <IC>
+        <SecHdr label="Filter by Type" />
+        {['Missing Values','Schema Change','Data Drift','Freshness','Duplicates','Referential Integrity'].map(t => <FgOpt key={t} label={t} />)}
+      </IC>
+      <IC>
+        <SecHdr label="Filter by Connection" />
+        {(realConnections.length ? realConnections : mockConnections).map(c => <FgOpt key={c.id} label={c.name} />)}
+      </IC>
+    </>,
+
+    rules: () => <>
+      <IC>
+        <SecHdr label="Rule Types" />
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '3px', marginBottom: '14px' }}>
+          {[['🔴','Not Null',4],['🟣','Unique',2],['📝','Regex',1],['⏱','Freshness',2],['📉','Min Value',1],['📈','Max Value',1],['#️⃣','Row Count',1],['⚙️','Custom SQL',1]].map(([ic,lb,ct]) => (
+            <div key={lb} style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '6px 8px', borderRadius: '8px', cursor: 'pointer' }}>
+              <span style={{ fontSize: '13px', width: '20px', textAlign: 'center' }}>{ic}</span>
+              <span style={{ fontSize: '12.5px', color: 'var(--text)', flex: 1 }}>{lb}</span>
+              <span style={{ fontSize: '11.5px', fontWeight: '700', color: 'var(--muted)' }}>{ct}</span>
+            </div>
+          ))}
+        </div>
+        <DarkBtn>+ Add Rule</DarkBtn>
+      </IC>
+      <IC>
+        <SecHdr label="This Week" />
+        <Stats3 items={[['247','Runs'],['221','Passed','#16a34a'],['26','Failed','var(--orange)']]} />
+      </IC>
+    </>,
+
+    lineage: () => <>
+      <IC>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '10px' }}>
+          <div style={{ width: '40px', height: '40px', borderRadius: '50%', background: 'var(--bg)', border: '2px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '19px', flexShrink: 0 }}>📋</div>
+          <div><div style={{ fontSize: '14.5px', fontWeight: '700', color: 'var(--text)' }}>customer_master</div></div>
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: 'var(--bg)', borderRadius: '10px', padding: '8px 12px', marginBottom: '12px', fontSize: '12px', fontWeight: '500', color: 'var(--text)' }}>public · Enterprise DW</div>
+        <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', marginBottom: '12px' }}>
+          {['PII','Golden Record','GDPR'].map(t => <span key={t} style={{ fontSize: '10.5px', fontWeight: '500', padding: '2px 7px', borderRadius: '20px', background: t==='PII'?'rgba(220,38,38,.08)':'var(--bg)', color: t==='PII'?'#dc2626':'var(--muted)' }}>{t}</span>)}
+        </div>
+        <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '12px', paddingTop: '10px', borderTop: '1px solid var(--border)' }}>
+          {[['2','Upstream'],['4','Downstream'],['48','Columns']].map(([n,l]) => (
+            <div key={l} style={{ textAlign: 'center' }}>
+              <span style={{ fontSize: '18px', fontWeight: '700', color: 'var(--text)', display: 'block' }}>{n}</span>
+              <span style={{ fontSize: '10px', color: 'var(--muted)' }}>{l}</span>
+            </div>
+          ))}
+        </div>
+      </IC>
+      <IC>
+        <SecHdr label="Explore Table" />
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: '10px', padding: '8px 12px', marginBottom: '12px' }}>
+          <span>🔍</span>
+          <input placeholder="Search tables…" style={{ border: 'none', background: 'transparent', fontSize: '12.5px', color: 'var(--text)', outline: 'none', width: '100%', fontFamily: 'inherit' }} />
+        </div>
+        <SecHdr label="Show Layers" />
+        <FgOpt label="2 Upstream layers" />
+        <FgOpt label="2 Downstream layers" />
+        <FgOpt label="ETL nodes" />
+      </IC>
+    </>,
+
+    agents: () => <>
+      <IC>
+        <SecHdr label="Agent Status" right={<LiveDot />} />
+        {mockAgents.map(a => (
+          <div key={a.id} style={{ display: 'flex', alignItems: 'center', gap: '9px', padding: '7px 8px', borderRadius: '8px', cursor: 'pointer' }}>
+            <div style={{ width: '7px', height: '7px', borderRadius: '50%', flexShrink: 0, background: a.status==='active'?'#16a34a':'#f59e0b', boxShadow: a.status==='active'?'0 0 5px rgba(22,163,74,.4)':undefined }} />
+            <span style={{ fontSize: '12.5px', color: 'var(--text)', flex: 1 }}>{a.name}</span>
+            <span style={{ fontSize: '11px', color: 'var(--muted)' }}>{a.tasksToday} today</span>
+          </div>
+        ))}
+      </IC>
+      <IC>
+        <SecHdr label="Today's Activity" />
+        <Stats3 items={[['170','Tasks run'],['5/6','Active','#16a34a'],['2.8s','Avg time']]} />
+      </IC>
+    </>,
+  };
+
+  const content = panels[activeTab];
+  return (
+    <div style={{ width: '262px', minWidth: '262px', background: 'var(--bg)', borderRight: '1px solid var(--border)', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '10px', padding: '14px 12px 20px' }}>
+      {content ? content() : (
+        <IC><SecHdr label={activeTab} /><p style={{ fontSize: '12.5px', color: 'var(--muted)' }}>Select a tab to see details.</p></IC>
+      )}
+    </div>
+  );
+};
+
 // ─── MAIN APP ─────────────────────────────────────────────────────────────────
 function DataIQApp({ authUser, handleLogout }) {
   const [activeTab, setActiveTab] = useState("dashboard");
@@ -1466,13 +1728,11 @@ function DataIQApp({ authUser, handleLogout }) {
   const [selectedTable, setSelectedTable] = useState(null);
   const [lineageTableId, setLineageTableId] = useState("gold.fact_orders");
   const [agentLogs, setAgentLogs] = useState([]);
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [searchFocused, setSearchFocused] = useState(false);
   const [agentStates, setAgentStates] = useState({});
   const [filterDomain, setFilterDomain] = useState("All");
   const [filterTrust, setFilterTrust] = useState("All");
   const [filterConn, setFilterConn] = useState("All");
-  const [notifOpen, setNotifOpen] = useState(false);
 
   // ── Backend state ────────────────────────────────────────────────────────
   const [backendOnline, setBackendOnline] = useState(false);
@@ -1638,287 +1898,218 @@ function DataIQApp({ authUser, handleLogout }) {
 
   // ── SIDEBAR ────────────────────────────────────────────────────────────────
   const navItems = [
-    { id: "dashboard",   icon: Home,      label: "Dashboard" },
-    { id: "catalog",     icon: Layers,    label: "Data Catalog" },
-    { id: "quality",     icon: Target,    label: "Data Quality" },
-    { id: "lineage",     icon: Network,   label: "Lineage" },
-    { id: "agents",      icon: Bot,       label: "AI Agents" },
-    { id: "tasks",       icon: ListTodo,  label: "Tasks" },
-    { id: "governance",  icon: Shield,    label: "Governance" },
-    { id: "rules",       icon: CheckCircle, label: "DQ Rules" },
-    { id: "scheduler",   icon: Calendar,  label: "Scheduler" },
-    { id: "connections", icon: Database,  label: "Connections" },
+    { id: "dashboard",   icon: "⬡",   label: "Dashboard" },
+    { id: "scheduler",   icon: "📅",  label: "Scheduler" },
+    { id: null }, // separator
+    { id: "connections", icon: "🔗",  label: "Connections" },
+    { id: "catalog",     icon: "🗄",   label: "Data Catalog" },
+    { id: "quality",     icon: "🚨",   label: "Issues" },
+    { id: "rules",       icon: "⚡",   label: "DQ Rules" },
+    { id: "lineage",     icon: "🔀",   label: "Lineage" },
+    { id: "agents",      icon: "🤖",   label: "AI Agents" },
+    { id: null }, // separator
+    { id: "governance",  icon: "🛡",   label: "Governance" },
   ];
 
   const Sidebar = () => (
-    <div className={`${sidebarCollapsed ? "w-16" : "w-60"} bg-[#0F1F3D] text-white flex flex-col transition-all duration-200 flex-shrink-0`}>
+    <div style={{ width: '150px', minWidth: '150px', background: 'var(--card)', borderRight: '1px solid var(--border)', display: 'flex', flexDirection: 'column', padding: '20px 10px 18px' }}>
       {/* Logo */}
-      <div className={`flex items-center ${sidebarCollapsed ? "justify-center p-3" : "gap-3 p-4"} border-b border-white/10`}>
-        <div className="w-8 h-8 bg-[#fdf3ee]0 rounded-lg flex items-center justify-center flex-shrink-0">
-          <Database className="w-5 h-5 text-white" />
-        </div>
-        {!sidebarCollapsed && (
-          <div>
-            <div className="font-bold text-white text-sm tracking-wide">DataIQ</div>
-            <div className="text-blue-300 text-xs">Enterprise Platform</div>
-          </div>
-        )}
+      <div style={{ display: 'flex', alignItems: 'center', gap: '9px', padding: '0 6px', marginBottom: '28px' }}>
+        <div style={{ width: '28px', height: '28px', borderRadius: '8px', background: 'var(--orange)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '13px', fontWeight: '800', color: '#fff', flexShrink: 0 }}>D</div>
+        <div style={{ fontSize: '14px', fontWeight: '700', color: 'var(--text)' }}>DataIQ</div>
       </div>
-
-      {/* Search shortcut */}
-      {!sidebarCollapsed && (
-        <div className="px-3 pt-4 pb-2">
-          <button
-            onClick={() => { setActiveTab("catalog"); setSearchFocused(true); }}
-            className="w-full flex items-center gap-2 px-3 py-2 rounded-lg bg-white/10 hover:bg-white/15 text-slate-300 text-sm transition-colors"
-          >
-            <Search className="w-4 h-4" />
-            <span className="text-xs">Search assets…</span>
-            <span className="ml-auto text-xs bg-white/10 px-1.5 py-0.5 rounded">⌘K</span>
-          </button>
-        </div>
-      )}
 
       {/* Nav */}
-      <nav className="flex-1 px-2 py-3 space-y-0.5">
-        {navItems.map(({ id, icon: Icon, label }) => (
-          <button
-            key={id}
-            onClick={() => setActiveTab(id)}
-            className={`w-full flex items-center ${sidebarCollapsed ? "justify-center" : "gap-3"} px-3 py-2.5 rounded-lg text-left transition-colors group relative ${
-              activeTab === id
-                ? "bg-[#e8622b] text-white"
-                : "text-slate-400 hover:bg-white/10 hover:text-white"
-            }`}
-            title={sidebarCollapsed ? label : undefined}
-          >
-            <Icon className="w-4.5 h-4.5 flex-shrink-0" />
-            {!sidebarCollapsed && <span className="text-sm font-medium">{label}</span>}
-            {!sidebarCollapsed && id === "quality" && highIssues > 0 && (
-              <span className="ml-auto bg-red-500 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center font-bold">{highIssues}</span>
-            )}
-          </button>
-        ))}
+      <nav style={{ display: 'flex', flexDirection: 'column', gap: '1px', flex: 1 }}>
+        {navItems.map(({ id, icon, label }, idx) => {
+          const isActive = activeTab === id;
+          const isSeparator = id === null;
+          if (isSeparator) return <div key={idx} style={{ height: '1px', background: 'var(--border)', margin: '10px 0' }} />;
+          return (
+            <button
+              key={id}
+              onClick={() => setActiveTab(id)}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '9px',
+                padding: '8px 10px',
+                borderRadius: '8px',
+                fontSize: '13px',
+                fontWeight: isActive ? '600' : '500',
+                color: isActive ? 'var(--dark)' : 'var(--muted)',
+                cursor: 'pointer',
+                background: isActive ? 'rgba(232,98,43,.06)' : 'transparent',
+                borderLeft: isActive ? '3px solid var(--orange)' : 'none',
+                marginLeft: isActive ? '-10px' : '0',
+                paddingLeft: isActive ? '12px' : '10px',
+                transition: 'all .15s',
+              }}
+            >
+              <span style={{ fontSize: '14px', width: '18px', textAlign: 'center' }}>{icon}</span>
+              <span>{label}</span>
+            </button>
+          );
+        })}
       </nav>
 
-      {/* User */}
       {/* Backend status */}
-      {!sidebarCollapsed && (
-        <div className={`mx-3 mb-2 px-3 py-2 rounded-lg flex items-center gap-2 text-xs ${backendOnline ? "bg-emerald-900/40 text-emerald-300" : "bg-red-900/30 text-red-300"}`}>
-          {backendOnline ? <Wifi className="w-3 h-3 flex-shrink-0" /> : <WifiOff className="w-3 h-3 flex-shrink-0" />}
-          <span>{backendOnline ? "Backend connected" : "Backend offline"}</span>
-        </div>
-      )}
-      <div className={`border-t border-white/10 p-3 flex items-center ${sidebarCollapsed ? "justify-center" : "gap-2"}`}>
-        <div className="w-7 h-7 rounded-full bg-[#fdf3ee]0 flex items-center justify-center text-white text-xs font-bold flex-shrink-0">MA</div>
-        {!sidebarCollapsed && (
-          <div className="flex-1 min-w-0">
-            <div className="text-xs font-medium text-white truncate">Milan</div>
-            <div className="text-xs text-slate-400 truncate">Admin</div>
-          </div>
-        )}
+      <div style={{ margin: '4px 0', padding: '6px 10px', borderRadius: '8px', display: 'flex', alignItems: 'center', gap: '6px', fontSize: '11px', fontWeight: '500', background: backendOnline ? 'rgba(22,163,74,.1)' : 'rgba(220,38,38,.08)', color: backendOnline ? '#16a34a' : '#dc2626' }}>
+        <div style={{ width: '5px', height: '5px', borderRadius: '50%', background: backendOnline ? '#16a34a' : '#dc2626', flexShrink: 0 }} />
+        {backendOnline ? 'Backend connected' : 'Backend offline'}
       </div>
 
-      {/* Collapse btn */}
-      <button
-        onClick={() => setSidebarCollapsed(c => !c)}
-        className="absolute left-0 bottom-24 translate-x-[calc(100%-0px)] bg-[#0F1F3D] border border-white/10 p-1 rounded-r-lg text-slate-400 hover:text-white opacity-0 group-hover:opacity-100 z-20"
-        style={{ position: "static", margin: "0 auto 4px" }}
-      >
-        {sidebarCollapsed ? <ChevronRight className="w-3 h-3" /> : <ChevronDown className="w-3 h-3 rotate-90" />}
-      </button>
+      {/* Separator before profile */}
+      <div style={{ height: '1px', background: 'var(--border)', margin: '6px 0' }} />
+
+      {/* Profile */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: '9px', padding: '8px 10px', borderRadius: '8px', fontSize: '13px', fontWeight: '500', color: 'var(--muted)', cursor: 'pointer' }}>
+        <div style={{ width: '22px', height: '22px', borderRadius: '50%', background: 'var(--dark)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '10px', fontWeight: '700', flexShrink: 0 }}>
+          {authUser?.name ? authUser.name[0].toUpperCase() : 'M'}
+        </div>
+        <div style={{ minWidth: 0 }}>
+          <div style={{ fontSize: '12px', fontWeight: '600', color: 'var(--text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{authUser?.name || 'Milan'}</div>
+          <div style={{ fontSize: '11px', color: 'var(--muted)' }}>Admin</div>
+        </div>
+      </div>
     </div>
   );
 
-  // ── TOPBAR ─────────────────────────────────────────────────────────────────
-  const TopBar = () => {
-    const labels = { dashboard: "Dashboard", catalog: "Data Catalog", quality: "Data Quality", lineage: "Data Lineage", agents: "AI Agents", tasks: "Task Queue", governance: "Governance & Compliance", connections: "Connections" };
+
+  // ── DASHBOARD TAB ──────────────────────────────────────────────────────────
+  const Dashboard = () => {
+    const today = new Date().toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+    const kpiCards = [
+      { icon: '🗄', value: catalogTables.length || 2920, label: 'Total tables profiled', trend: `across ${realConnections.length || 6} connections`, trendType: 'nt', topColor: '#1c3d34' },
+      { icon: '📊', value: `${avgQuality}%`, label: 'Avg quality score', trend: '↑ 3.1% this week', trendType: 'up', topColor: '#16a34a' },
+      { icon: '🚨', value: totalIssues, label: 'Open issues', trend: `↑ ${highIssues} high severity`, trendType: totalIssues > 0 ? 'dn' : 'nt', topColor: '#e8622b' },
+      { icon: '⚡', value: `${221}/${247}`, label: 'Rules passing today', trend: '89.5% pass rate', trendType: 'up', topColor: '#16a34a' },
+    ];
+    const trendStyle = t => t === 'up' ? { background: 'rgba(22,163,74,.1)', color: '#16a34a' } : t === 'dn' ? { background: 'rgba(220,38,38,.08)', color: '#dc2626' } : { background: 'rgba(107,114,128,.08)', color: '#6b7280' };
+    const dashCardStyle = { background: '#fff', borderRadius: '16px', padding: '20px', border: '1px solid var(--border)' };
     return (
-      <div className="bg-white border-b border-slate-200 px-6 py-3 flex items-center justify-between flex-shrink-0 h-14">
-        <div className="flex items-center gap-2 text-sm text-slate-500">
-          <button onClick={() => setSidebarCollapsed(c => !c)} className="p-1 hover:bg-slate-100 rounded mr-2">
-            <svg className="w-5 h-5" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M3 5h14a1 1 0 010 2H3a1 1 0 010-2zm0 4h14a1 1 0 010 2H3a1 1 0 010-2zm0 4h14a1 1 0 010 2H3a1 1 0 010-2z" clipRule="evenodd" /></svg>
+      <div className="flex-1 overflow-auto" style={{ padding: '22px 24px' }}>
+        {/* Header */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '20px' }}>
+          <h1 style={{ fontSize: '20px', fontWeight: '700', color: 'var(--text)', flex: 1, display: 'flex', alignItems: 'center', gap: '6px' }}>
+            Dashboard <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: 'var(--orange)', display: 'inline-block', verticalAlign: 'middle' }} />
+          </h1>
+          <span style={{ fontSize: '12.5px', color: 'var(--muted)' }}>{today}</span>
+          <button onClick={() => {}} style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '8px 18px', background: 'var(--orange)', color: '#fff', border: 'none', borderRadius: '10px', fontSize: '13px', fontWeight: '600', cursor: 'pointer', fontFamily: 'inherit' }}>
+            <RefreshCw style={{ width: '14px', height: '14px' }} /> Refresh All
           </button>
-          <Globe className="w-4 h-4 text-[#e8622b]" />
-          <span className="text-slate-400">/</span>
-          <span className="text-slate-700 font-medium">{labels[activeTab] || activeTab}</span>
-          {selectedTable && activeTab === "catalog" && (
-            <><span className="text-slate-400">/</span><span className="text-[#e8622b] font-medium">{selectedTable.name}</span></>
-          )}
         </div>
-        <div className="flex items-center gap-3">
-          <div className="relative">
-            <Search className="w-4 h-4 absolute left-3 top-2.5 text-slate-400" />
-            <input
-              type="text" placeholder="Search data assets, tables, columns…"
-              className="pl-9 pr-4 py-2 w-64 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#e8622b]"
-              value={searchQuery}
-              onChange={e => setSearchQuery(e.target.value)}
-            />
+
+        {/* KPI row */}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: '14px', marginBottom: '18px' }}>
+          {kpiCards.map(({ icon, value, label, trend, trendType, topColor }) => (
+            <div key={label} style={{ background: '#fff', borderRadius: '16px', padding: '18px', border: '1px solid var(--border)', borderTop: `3px solid ${topColor}` }}>
+              <div style={{ fontSize: '20px', marginBottom: '10px' }}>{icon}</div>
+              <div style={{ fontSize: '26px', fontWeight: '800', color: 'var(--text)', lineHeight: '1' }}>{value}</div>
+              <div style={{ fontSize: '11.5px', color: 'var(--muted)', marginTop: '4px' }}>{label}</div>
+              <div style={{ display: 'inline-flex', alignItems: 'center', gap: '3px', fontSize: '11px', fontWeight: '600', padding: '2px 7px', borderRadius: '20px', marginTop: '8px', ...trendStyle(trendType) }}>{trend}</div>
+            </div>
+          ))}
+        </div>
+
+        {/* 2×2 grid */}
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px' }}>
+          {/* Most Accessed Data Assets */}
+          <div style={dashCardStyle}>
+            <div style={{ fontSize: '14px', fontWeight: '600', color: 'var(--text)', marginBottom: '14px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              Most Accessed Data Assets
+              <button onClick={() => setActiveTab("catalog")} style={{ fontSize: '12px', color: 'var(--orange)', background: 'none', border: 'none', cursor: 'pointer', fontFamily: 'inherit' }}>View catalog →</button>
+            </div>
+            {catalogTables.slice(0, 6).map(t => (
+              <div key={t.id} onClick={() => openTableDetail(t)} style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '9px 8px', borderBottom: '1px solid #f5f0ea', cursor: 'pointer', borderRadius: '8px', margin: '0 -8px', transition: 'background .1s' }}
+                onMouseEnter={e => e.currentTarget.style.background='#faf8f5'} onMouseLeave={e => e.currentTarget.style.background='transparent'}>
+                <div style={{ width: '28px', height: '28px', borderRadius: '8px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '13px', background: 'rgba(22,163,74,.08)', flexShrink: 0 }}>🗄</div>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: '12.5px', fontWeight: '600', color: 'var(--text)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{t.name}</div>
+                  <div style={{ fontSize: '11px', color: 'var(--muted)', marginTop: '1px' }}>{t.connection} · {t.schema}</div>
+                </div>
+                <TrustBadge trust={t.trust} />
+                <QualityBar score={t.quality} />
+              </div>
+            ))}
           </div>
-          <div className="relative">
-            <button onClick={() => setNotifOpen(n => !n)} className="p-2 hover:bg-slate-100 rounded-lg relative">
-              <Bell className="w-5 h-5 text-slate-600" />
-              <span className="absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full" />
-            </button>
-            {notifOpen && (
-              <div className="absolute right-0 top-10 w-80 bg-white border border-slate-200 rounded-xl shadow-xl z-50">
-                <div className="px-4 py-3 border-b border-slate-100 font-semibold text-sm text-slate-700">Notifications</div>
-                {catalogIssues.slice(0, 4).map(issue => (
-                  <div key={issue.id} onClick={() => { setActiveTab("quality"); setNotifOpen(false); }} className="px-4 py-3 hover:bg-slate-50 cursor-pointer border-b border-slate-50">
-                    <div className="flex items-start gap-2">
-                      <AlertCircle className={`w-4 h-4 flex-shrink-0 mt-0.5 ${issue.severity === "high" ? "text-red-500" : "text-yellow-500"}`} />
-                      <div>
-                        <div className="text-xs font-medium text-slate-800">{issue.type} — {issue.table}</div>
-                        <div className="text-xs text-slate-500 mt-0.5">{issue.description.slice(0, 60)}…</div>
-                      </div>
-                    </div>
+
+          {/* Open Issues */}
+          <div style={dashCardStyle}>
+            <div style={{ fontSize: '14px', fontWeight: '600', color: 'var(--text)', marginBottom: '14px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              Open Issues
+              <button onClick={() => setActiveTab("quality")} style={{ fontSize: '11.5px', padding: '4px 10px', background: '#fff', border: '1px solid var(--border)', borderRadius: '8px', cursor: 'pointer', fontFamily: 'inherit', color: 'var(--text)' }}>View all</button>
+            </div>
+            {catalogIssues.map(i => {
+              const sev = i.severity === 'high' ? 'hi' : i.severity === 'medium' ? 'med' : 'lo';
+              const sevIcon = i.severity === 'high' ? '🚨' : i.severity === 'medium' ? '⚠️' : '💡';
+              const sevBgMap = { hi: 'rgba(232,98,43,.1)', med: 'rgba(246,185,77,.1)', lo: 'rgba(59,130,246,.08)' };
+              const sevColorMap = { hi: 'var(--orange)', med: '#a07000', lo: '#1d4ed8' };
+              return (
+                <div key={i.id} onClick={() => setActiveTab("quality")} style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '9px 8px', borderBottom: '1px solid #f5f0ea', cursor: 'pointer', borderRadius: '8px', margin: '0 -8px' }}
+                  onMouseEnter={e => e.currentTarget.style.background='#faf8f5'} onMouseLeave={e => e.currentTarget.style.background='transparent'}>
+                  <div style={{ width: '28px', height: '28px', borderRadius: '8px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '13px', background: sevBgMap[sev], flexShrink: 0 }}>{sevIcon}</div>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: '12.5px', fontWeight: '600', color: 'var(--text)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{i.table}</div>
+                    <div style={{ fontSize: '11px', color: 'var(--muted)', marginTop: '1px' }}>{i.type} · {i.detectedAt}</div>
                   </div>
-                ))}
-              </div>
-            )}
+                  <span style={{ fontSize: '10.5px', fontWeight: '700', padding: '3px 9px', borderRadius: '20px', background: sevBgMap[sev], color: sevColorMap[sev], flexShrink: 0 }}>{i.severity.charAt(0).toUpperCase()+i.severity.slice(1)}</span>
+                </div>
+              );
+            })}
           </div>
-          {/* User avatar + logout */}
-          <div className="flex items-center gap-2">
-            {authUser?.picture ? (
-              <img src={authUser.picture} alt={authUser.name} className="w-8 h-8 rounded-full border-2 border-[#e8622b]/30" />
-            ) : (
-              <div className="w-8 h-8 rounded-full bg-[#fdf3ee]0 flex items-center justify-center text-white text-xs font-bold">
-                {authUser?.name ? authUser.name[0].toUpperCase() : "U"}
+
+          {/* Recent Activity */}
+          <div style={dashCardStyle}>
+            <div style={{ fontSize: '14px', fontWeight: '600', color: 'var(--text)', marginBottom: '14px' }}>Recent Activity</div>
+            {[
+              ['#16a34a', 'Full Profile Scan completed on Operational DB — 203 tables, 0 new issues', '3 mins ago'],
+              ['#ca8a04', 'Data drift detected in orders_fact · amount_usd distribution anomaly', '7 mins ago'],
+              ['#16a34a', 'PII Scanner completed on HR data — 63 columns scanned, 12 flagged', '10 mins ago'],
+              ['var(--orange)', 'Rules Validation failed on email_campaigns — 89,450 null customer_id rows', '2 hrs ago'],
+              ['#1d4ed8', 'Schema Sync detected new column analytics.customer_360.churn_v2', '1 hr ago'],
+              ['#16a34a', 'Weekly Profile Run completed — All connections healthy', 'Yesterday'],
+            ].map(([c,t,ts], i) => (
+              <div key={i} style={{ display: 'flex', gap: '10px', padding: '8px 0', borderBottom: '1px solid #f5f0ea' }}>
+                <div style={{ width: '8px', height: '8px', borderRadius: '50%', marginTop: '4px', flexShrink: 0, background: c }} />
+                <div style={{ fontSize: '12.5px', color: 'var(--text)', lineHeight: '1.4', flex: 1 }}>{t}</div>
+                <div style={{ fontSize: '11px', color: 'var(--muted)', whiteSpace: 'nowrap' }}>{ts}</div>
               </div>
-            )}
-            <div className="hidden sm:block text-xs text-slate-600 max-w-[100px] truncate">{authUser?.name}</div>
-            <button
-              onClick={handleLogout}
-              title="Sign out"
-              className="p-1.5 hover:bg-slate-100 rounded-lg text-slate-500 hover:text-red-500 transition-colors"
-            >
-              <Lock className="w-4 h-4" />
-            </button>
+            ))}
+          </div>
+
+          {/* Connection Health */}
+          <div style={dashCardStyle}>
+            <div style={{ fontSize: '14px', fontWeight: '600', color: 'var(--text)', marginBottom: '14px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              Connection Health
+              <button onClick={() => setActiveTab("connections")} style={{ fontSize: '11.5px', padding: '4px 10px', background: '#fff', border: '1px solid var(--border)', borderRadius: '8px', cursor: 'pointer', fontFamily: 'inherit', color: 'var(--text)' }}>View all</button>
+            </div>
+            {(realConnections.length ? realConnections : mockConnections).map(c => {
+              const statusColor = c.status === 'ok' || c.status === 'connected' ? '#16a34a' : c.status === 'warning' ? '#ca8a04' : '#dc2626';
+              const statusLabel = c.status === 'ok' || c.status === 'connected' ? 'Live' : c.status === 'warning' ? 'Warning' : 'Offline';
+              return (
+                <div key={c.id} style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '9px 0', borderBottom: '1px solid #f5f0ea' }}>
+                  <span style={{ fontSize: '18px' }}>{c.icon || '🔗'}</span>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: '13px', fontWeight: '600', color: 'var(--text)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{c.name}</div>
+                    <div style={{ fontSize: '11px', color: 'var(--muted)' }}>{c.type} · {(c.tables || c.table_count || 0)} tables</div>
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '5px', fontSize: '12px', fontWeight: '600', color: statusColor }}>
+                    <span style={{ width: '7px', height: '7px', borderRadius: '50%', background: statusColor, display: 'inline-block' }} />
+                    {statusLabel}
+                  </div>
+                </div>
+              );
+            })}
           </div>
         </div>
       </div>
     );
   };
 
-  // ── DASHBOARD TAB ──────────────────────────────────────────────────────────
-  const Dashboard = () => (
-    <div className="flex-1 overflow-auto bg-slate-50">
-      <div className="p-6 space-y-6 max-w-7xl mx-auto">
-        <div className="flex items-center justify-between">
-          <div>
-            <h2 className="text-xl font-bold text-slate-900">Enterprise Data Intelligence</h2>
-            <p className="text-sm text-slate-500 mt-0.5">Real-time health across {realConnections.filter(c => c.status === "ok").length} connected systems · {catalogTables.length} catalogued tables</p>
-          </div>
-          <button className="flex items-center gap-2 px-4 py-2 bg-[#e8622b] text-white text-sm rounded-lg hover:opacity-90 shadow-sm">
-            <RefreshCw className="w-4 h-4" /> Refresh All
-          </button>
-        </div>
-
-        {/* KPI cards */}
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-          {[
-            { label: "Avg Quality Score", value: `${avgQuality}%`, sub: "+2.1% from last week", icon: Target, color: "text-emerald-600", bg: "bg-emerald-50", border: "border-emerald-200", trend: "up" },
-            { label: "Active Data Sources", value: realConnections.filter(c => c.status === "ok").length, sub: `${realConnections.length} total connections`, icon: Database, color: "text-[#e8622b]", bg: "bg-[#fdf3ee]", border: "border-[#e8622b]/30", trend: "flat" },
-            { label: "Open Issues", value: totalIssues, sub: `${highIssues} high severity`, icon: AlertTriangle, color: "text-red-600", bg: "bg-red-50", border: "border-red-200", trend: "down" },
-            { label: "AI Agents Active", value: `${activeAgents}/${mockAgents.length}`, sub: "All agents healthy", icon: Bot, color: "text-purple-600", bg: "bg-purple-50", border: "border-purple-200", trend: "flat" },
-          ].map(({ label, value, sub, icon: Icon, color, bg, border, trend }) => (
-            <div key={label} className={`bg-white rounded-xl border ${border} p-5 shadow-sm`}>
-              <div className="flex items-start justify-between">
-                <div>
-                  <p className="text-xs text-slate-500 font-medium uppercase tracking-wide">{label}</p>
-                  <p className={`text-2xl font-bold mt-1 ${color}`}>{value}</p>
-                  <p className="text-xs text-slate-400 mt-1">{sub}</p>
-                </div>
-                <div className={`${bg} ${color} p-2.5 rounded-xl`}><Icon className="w-5 h-5" /></div>
-              </div>
-            </div>
-          ))}
-        </div>
-
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* Top assets */}
-          <div className="lg:col-span-2 bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
-            <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between">
-              <h3 className="font-semibold text-slate-800 text-sm">Most Accessed Data Assets</h3>
-              <button onClick={() => setActiveTab("catalog")} className="text-xs text-[#e8622b] hover:underline">View catalog →</button>
-            </div>
-            <div className="divide-y divide-slate-50">
-              {catalogTables.slice(0, 6).map(t => (
-                <div key={t.id} className="px-5 py-3.5 hover:bg-slate-50 cursor-pointer flex items-center gap-4" onClick={() => openTableDetail(t)}>
-                  <div className="w-8 h-8 rounded-lg bg-[#fdf3ee] flex items-center justify-center flex-shrink-0">
-                    <Table className="w-4 h-4 text-[#e8622b]" />
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2">
-                      <span className="text-sm font-semibold text-slate-800 font-mono">{t.name}</span>
-                      <TrustBadge trust={t.trust} />
-                    </div>
-                    <div className="text-xs text-slate-500 truncate mt-0.5">{t.connection} · {t.schema} · {(t.records ?? t.row_count ?? 0).toLocaleString()} records</div>
-                  </div>
-                  <div className="w-24 flex-shrink-0">
-                    <QualityBar score={t.quality} />
-                  </div>
-                  <button onClick={e => { e.stopPropagation(); openLineage(t.id); }} className="text-slate-400 hover:text-[#e8622b] flex-shrink-0" title="View lineage">
-                    <Network className="w-4 h-4" />
-                  </button>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          {/* Live agent log */}
-          <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
-            <div className="px-4 py-4 border-b border-slate-100 flex items-center justify-between">
-              <h3 className="font-semibold text-slate-800 text-sm flex items-center gap-2">
-                <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse inline-block" />
-                Agent Activity Feed
-              </h3>
-              <span className="text-xs text-slate-400">live</span>
-            </div>
-            <div className="p-3 h-80 overflow-auto space-y-1.5 font-mono">
-              {agentLogs.slice().reverse().map(log => (
-                <div key={log.id} className="flex items-start gap-2 text-xs">
-                  <span className="text-slate-400 flex-shrink-0 mt-0.5">{log.timestamp}</span>
-                  <span className={`flex-shrink-0 mt-0.5 ${log.level === "error" ? "text-red-500" : log.level === "warn" ? "text-yellow-500" : "text-emerald-500"}`}>
-                    {log.level === "error" ? "✗" : log.level === "warn" ? "⚠" : "✓"}
-                  </span>
-                  <div>
-                    <span className="text-[#e8622b]">[{log.agent}]</span>{" "}
-                    <span className="text-slate-700">{log.message}</span>
-                  </div>
-                </div>
-              ))}
-              {agentLogs.length === 0 && <div className="text-slate-400 text-xs p-2">Waiting for agent activity…</div>}
-            </div>
-          </div>
-        </div>
-
-        {/* Issues snapshot */}
-        <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
-          <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between">
-            <h3 className="font-semibold text-slate-800 text-sm">Active Issues</h3>
-            <button onClick={() => setActiveTab("quality")} className="text-xs text-[#e8622b] hover:underline">View all →</button>
-          </div>
-          <div className="divide-y divide-slate-50">
-            {catalogIssues.map(issue => (
-              <div key={issue.id} className="px-5 py-3 flex items-center gap-4 hover:bg-slate-50">
-                <SeverityBadge severity={issue.severity} />
-                <span className="text-sm font-medium text-slate-700 w-40 flex-shrink-0">{issue.type}</span>
-                <code className="text-xs bg-slate-100 px-2 py-0.5 rounded text-[#c94d1a] cursor-pointer hover:bg-[#fdf3ee]" onClick={() => { const t = catalogTables.find(t => t.id === issue.tableId); if (t) openTableDetail(t); }}>{issue.table}</code>
-                <span className="text-xs text-slate-500 flex-1">{issue.description}</span>
-                <span className="text-xs text-slate-400 flex-shrink-0">{issue.detectedAt}</span>
-              </div>
-            ))}
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-
   // ── CATALOG TAB ────────────────────────────────────────────────────────────
   const CatalogTab = () => (
-    <div className="flex-1 overflow-auto bg-slate-50">
+    <div className="flex-1 overflow-auto" style={{ background: 'var(--bg)' }}>
       <div className="p-6 max-w-7xl mx-auto space-y-4">
         {/* Filters */}
         <div className="flex flex-wrap items-center gap-3">
@@ -1951,7 +2142,7 @@ function DataIQApp({ authUser, handleLogout }) {
             {filteredTables.map(t => (
               <div key={t.id}
                 onClick={() => setSelectedTable(t)}
-                className={`bg-white rounded-xl border shadow-sm cursor-pointer hover:shadow-md transition-all ${selectedTable?.id === t.id ? "border-blue-500 ring-2 ring-blue-100" : "border-slate-200 hover:border-[#e8622b]/30"}`}>
+                className={`bg-white rounded-xl border shadow-sm cursor-pointer hover:shadow-md transition-all ${selectedTable?.id === t.id ? "border-[#e8622b]" : "border-slate-200 hover:border-[#e8622b]/40"}`}>
                 <div className="p-4">
                   <div className="flex items-start gap-3">
                     <div className="w-9 h-9 rounded-lg bg-[#fdf3ee] flex items-center justify-center flex-shrink-0 mt-0.5">
@@ -1982,10 +2173,10 @@ function DataIQApp({ authUser, handleLogout }) {
           {selectedTable && (
             <div className="flex-1 bg-white rounded-xl border border-slate-200 shadow-sm overflow-auto">
               {/* Detail header */}
-              <div className="px-6 py-4 border-b border-slate-100 bg-gradient-to-r from-blue-50 to-white">
+              <div className="px-6 py-4 border-b border-slate-100" style={{ background: '#faf8f5' }}>
                 <div className="flex items-start justify-between">
                   <div className="flex items-start gap-4">
-                    <div className="w-12 h-12 rounded-xl bg-blue-100 flex items-center justify-center">
+                    <div className="w-12 h-12 rounded-xl flex items-center justify-center" style={{ background: 'rgba(232,98,43,.1)' }}>
                       <Table className="w-6 h-6 text-[#e8622b]" />
                     </div>
                     <div>
@@ -2024,10 +2215,10 @@ function DataIQApp({ authUser, handleLogout }) {
                     { label: "Quality Score", value: `${selectedTable.quality}%`, icon: Target },
                     { label: "Last Profiled", value: selectedTable.lastProfiled, icon: Clock },
                   ].map(({ label, value, icon: Icon }) => (
-                    <div key={label} className="text-center p-3 bg-slate-50 rounded-xl">
-                      <Icon className="w-4 h-4 text-slate-400 mx-auto mb-1" />
-                      <div className="font-bold text-slate-900 text-lg">{value}</div>
-                      <div className="text-xs text-slate-500">{label}</div>
+                    <div key={label} style={{ textAlign: 'center', padding: '12px 8px', background: 'var(--bg)', borderRadius: '12px' }}>
+                      <Icon className="w-4 h-4 mx-auto mb-1" style={{ color: 'var(--muted)' }} />
+                      <div style={{ fontWeight: '700', color: 'var(--text)', fontSize: '18px' }}>{value}</div>
+                      <div style={{ fontSize: '11px', color: 'var(--muted)', marginTop: '2px' }}>{label}</div>
                     </div>
                   ))}
                 </div>
@@ -2119,14 +2310,23 @@ function DataIQApp({ authUser, handleLogout }) {
   const QualityTab = () => {
     const [activeSection, setActiveSection] = useState("issues");
     return (
-      <div className="flex-1 overflow-auto bg-slate-50">
-        <div className="p-6 max-w-7xl mx-auto space-y-5">
-          <div className="flex items-center justify-between">
-            <h2 className="text-xl font-bold text-slate-900">Data Quality Center</h2>
-            <div className="flex gap-2">
+      <div className="flex-1 overflow-auto" style={{ background: 'var(--bg)' }}>
+        <div style={{ padding: '22px 24px', maxWidth: '1200px', margin: '0 auto' }}>
+          {/* Header */}
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '20px' }}>
+            <h1 style={{ fontSize: '20px', fontWeight: '700', color: 'var(--text)', display: 'flex', alignItems: 'center', gap: '6px' }}>
+              Data Quality <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: 'var(--orange)', display: 'inline-block', verticalAlign: 'middle' }} />
+            </h1>
+            <div style={{ display: 'flex', gap: '6px' }}>
               {["issues", "scores", "rules"].map(s => (
-                <button key={s} onClick={() => setActiveSection(s)}
-                  className={`px-4 py-1.5 text-sm rounded-lg font-medium transition-colors ${activeSection === s ? "bg-[#e8622b] text-white" : "bg-white border border-slate-200 text-slate-600 hover:bg-slate-50"}`}>
+                <button key={s} onClick={() => setActiveSection(s)} style={{
+                  padding: '6px 16px', fontSize: '13px', fontWeight: '600', borderRadius: '10px', border: 'none',
+                  cursor: 'pointer', fontFamily: 'inherit', transition: 'all .15s',
+                  background: activeSection === s ? 'var(--orange)' : 'var(--card)',
+                  color: activeSection === s ? '#fff' : 'var(--muted)',
+                  boxShadow: activeSection === s ? 'none' : '0 1px 3px rgba(0,0,0,.06)',
+                  outline: activeSection === s ? 'none' : '1px solid var(--border)',
+                }}>
                   {s.charAt(0).toUpperCase() + s.slice(1)}
                 </button>
               ))}
@@ -2135,107 +2335,107 @@ function DataIQApp({ authUser, handleLogout }) {
 
           {activeSection === "issues" && (
             <>
-              <div className="grid grid-cols-3 gap-4">
+              {/* Severity cards */}
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: '12px', marginBottom: '16px' }}>
                 {[
-                  { label: "High Severity", count: highIssues, color: "text-red-700 bg-red-50 border-red-200" },
-                  { label: "Medium Severity", count: catalogIssues.filter(i => i.severity === "medium").length, color: "text-yellow-700 bg-yellow-50 border-yellow-200" },
-                  { label: "Low Severity", count: catalogIssues.filter(i => i.severity === "low").length, color: "text-[#c94d1a] bg-[#fdf3ee] border-[#e8622b]/30" },
-                ].map(({ label, count, color }) => (
-                  <div key={label} className={`rounded-xl border p-4 ${color}`}>
-                    <div className="text-3xl font-bold">{count}</div>
-                    <div className="text-sm font-medium mt-0.5">{label}</div>
+                  { label: "High Severity", count: highIssues, topColor: '#dc2626', bg: 'rgba(220,38,38,.06)', color: '#dc2626' },
+                  { label: "Medium Severity", count: catalogIssues.filter(i => i.severity === "medium").length, topColor: '#ca8a04', bg: 'rgba(202,138,4,.06)', color: '#ca8a04' },
+                  { label: "Low Severity", count: catalogIssues.filter(i => i.severity === "low").length, topColor: '#3b82f6', bg: 'rgba(59,130,246,.06)', color: '#3b82f6' },
+                ].map(({ label, count, topColor, bg, color }) => (
+                  <div key={label} style={{ background: 'var(--card)', borderRadius: '16px', border: '1px solid var(--border)', borderTop: `3px solid ${topColor}`, padding: '16px 18px' }}>
+                    <div style={{ fontSize: '28px', fontWeight: '800', color, lineHeight: '1' }}>{count}</div>
+                    <div style={{ fontSize: '12.5px', fontWeight: '600', color: 'var(--muted)', marginTop: '4px' }}>{label}</div>
                   </div>
                 ))}
               </div>
-              <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
-                <div className="px-5 py-4 border-b border-slate-100">
-                  <h3 className="font-semibold text-slate-800 text-sm">All Active Issues</h3>
+              {/* Issues list */}
+              <div style={{ background: 'var(--card)', borderRadius: '16px', border: '1px solid var(--border)', overflow: 'hidden' }}>
+                <div style={{ padding: '14px 18px', borderBottom: '1px solid var(--border)' }}>
+                  <span style={{ fontSize: '13px', fontWeight: '600', color: 'var(--text)' }}>All Active Issues</span>
                 </div>
-                <div className="divide-y divide-slate-100">
-                  {catalogIssues.map(issue => (
-                    <div key={issue.id} className="px-5 py-4 hover:bg-slate-50">
-                      <div className="flex items-start gap-4">
-                        <SeverityBadge severity={issue.severity} />
-                        <div className="flex-1">
-                          <div className="flex items-center gap-2">
-                            <span className="font-semibold text-slate-800 text-sm">{issue.type}</span>
-                            <span className="text-xs text-slate-500">in</span>
-                            <code className="text-xs bg-[#fdf3ee] text-[#c94d1a] px-2 py-0.5 rounded cursor-pointer hover:bg-blue-100"
-                              onClick={() => { const t = catalogTables.find(t => t.id === issue.tableId); if (t) openTableDetail(t); }}>
-                              {issue.table}
-                            </code>
-                          </div>
-                          <p className="text-sm text-slate-600 mt-1">{issue.description}</p>
-                          {issue.count > 0 && <span className="text-xs text-slate-400 mt-1 inline-block">{issue.count.toLocaleString()} records affected</span>}
-                        </div>
-                        <div className="flex items-center gap-2 flex-shrink-0">
-                          <span className="text-xs text-slate-400">{issue.detectedAt}</span>
-                          <button onClick={() => { const t = catalogTables.find(t => t.id === issue.tableId); if (t) openLineage(t.id); }}
-                            className="p-1.5 hover:bg-slate-100 rounded-lg" title="View lineage">
-                            <Network className="w-4 h-4 text-slate-400" />
-                          </button>
-                        </div>
+                {catalogIssues.map(issue => (
+                  <div key={issue.id} style={{ padding: '14px 18px', borderBottom: '1px solid #f5f0ea', display: 'flex', alignItems: 'flex-start', gap: '14px' }}
+                    onMouseEnter={e => e.currentTarget.style.background='#faf8f5'} onMouseLeave={e => e.currentTarget.style.background='transparent'}>
+                    <SeverityBadge severity={issue.severity} />
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                        <span style={{ fontSize: '13px', fontWeight: '600', color: 'var(--text)' }}>{issue.type}</span>
+                        <span style={{ fontSize: '11.5px', color: 'var(--muted)' }}>in</span>
+                        <code style={{ fontSize: '11.5px', background: 'rgba(232,98,43,.08)', color: 'var(--orange)', padding: '2px 7px', borderRadius: '6px', cursor: 'pointer', fontFamily: 'ui-monospace, monospace' }}
+                          onClick={() => { const t = catalogTables.find(t => t.id === issue.tableId); if (t) openTableDetail(t); }}>
+                          {issue.table}
+                        </code>
                       </div>
+                      <p style={{ fontSize: '12.5px', color: 'var(--muted)', marginTop: '4px', lineHeight: '1.45' }}>{issue.description}</p>
+                      {issue.count > 0 && <span style={{ fontSize: '11px', color: 'var(--muted)', marginTop: '2px', display: 'inline-block' }}>{issue.count.toLocaleString()} records affected</span>}
                     </div>
-                  ))}
-                </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0 }}>
+                      <span style={{ fontSize: '11.5px', color: 'var(--muted)' }}>{issue.detectedAt}</span>
+                      <button onClick={() => { const t = catalogTables.find(t => t.id === issue.tableId); if (t) openLineage(t.id); }}
+                        style={{ padding: '6px', background: 'none', border: 'none', cursor: 'pointer', borderRadius: '8px', color: 'var(--muted)' }}
+                        onMouseEnter={e => e.currentTarget.style.background='var(--bg)'} onMouseLeave={e => e.currentTarget.style.background='none'}
+                        title="View lineage">
+                        <Network style={{ width: '14px', height: '14px' }} />
+                      </button>
+                    </div>
+                  </div>
+                ))}
               </div>
             </>
           )}
 
           {activeSection === "scores" && (
-            <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
-              <div className="px-5 py-4 border-b border-slate-100">
-                <h3 className="font-semibold text-slate-800 text-sm">Quality Scores by Table</h3>
+            <div style={{ background: 'var(--card)', borderRadius: '16px', border: '1px solid var(--border)', overflow: 'hidden' }}>
+              <div style={{ padding: '14px 18px', borderBottom: '1px solid var(--border)' }}>
+                <span style={{ fontSize: '13px', fontWeight: '600', color: 'var(--text)' }}>Quality Scores by Table</span>
               </div>
-              <div className="divide-y divide-slate-100">
-                {[...catalogTables].sort((a, b) => b.quality - a.quality).map(t => (
-                  <div key={t.id} className="px-5 py-3.5 flex items-center gap-4 hover:bg-slate-50 cursor-pointer" onClick={() => openTableDetail(t)}>
-                    <div className="w-40 flex-shrink-0">
-                      <div className="text-sm font-mono font-semibold text-slate-800">{t.name}</div>
-                      <div className="text-xs text-slate-500">{t.connection}</div>
-                    </div>
-                    <div className="flex-1">
-                      <QualityBar score={t.quality} />
-                    </div>
-                    <TrustBadge trust={t.trust} />
-                    {t.issues > 0 && <span className="text-xs bg-red-100 text-red-700 border border-red-200 rounded px-2 py-0.5">{t.issues} issues</span>}
+              {[...catalogTables].sort((a, b) => b.quality - a.quality).map(t => (
+                <div key={t.id} style={{ padding: '12px 18px', borderBottom: '1px solid #f5f0ea', display: 'flex', alignItems: 'center', gap: '14px', cursor: 'pointer' }}
+                  onClick={() => openTableDetail(t)}
+                  onMouseEnter={e => e.currentTarget.style.background='#faf8f5'} onMouseLeave={e => e.currentTarget.style.background='transparent'}>
+                  <div style={{ width: '160px', flexShrink: 0 }}>
+                    <div style={{ fontSize: '12.5px', fontFamily: 'ui-monospace, monospace', fontWeight: '600', color: 'var(--text)' }}>{t.name}</div>
+                    <div style={{ fontSize: '11px', color: 'var(--muted)', marginTop: '2px' }}>{t.connection}</div>
                   </div>
-                ))}
-              </div>
+                  <div style={{ flex: 1 }}><QualityBar score={t.quality} /></div>
+                  <TrustBadge trust={t.trust} />
+                  {t.issues > 0 && <span style={{ fontSize: '11px', fontWeight: '700', padding: '2px 8px', borderRadius: '20px', background: 'rgba(220,38,38,.08)', color: '#dc2626' }}>{t.issues} issues</span>}
+                </div>
+              ))}
             </div>
           )}
 
           {activeSection === "rules" && (
-            <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
-              <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between">
-                <h3 className="font-semibold text-slate-800 text-sm">Validation Rules</h3>
-                <button className="flex items-center gap-1.5 px-3 py-1.5 text-xs bg-[#e8622b] text-white rounded-lg hover:opacity-90">
-                  <Plus className="w-3.5 h-3.5" /> Add Rule
+            <div style={{ background: 'var(--card)', borderRadius: '16px', border: '1px solid var(--border)', overflow: 'hidden' }}>
+              <div style={{ padding: '14px 18px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <span style={{ fontSize: '13px', fontWeight: '600', color: 'var(--text)' }}>Validation Rules</span>
+                <button style={{ display: 'flex', alignItems: 'center', gap: '5px', padding: '6px 14px', background: 'var(--orange)', color: '#fff', border: 'none', borderRadius: '8px', fontSize: '12.5px', fontWeight: '600', cursor: 'pointer', fontFamily: 'inherit' }}>
+                  <Plus style={{ width: '13px', height: '13px' }} /> Add Rule
                 </button>
               </div>
-              <div className="divide-y divide-slate-100">
-                {[
-                  { name: "Null Check — customer_id", table: "email_campaigns", type: "Not Null", status: "failing", lastRun: "2 min ago" },
-                  { name: "Format Check — email", table: "customer_master", type: "Regex", status: "passing", lastRun: "3 min ago" },
-                  { name: "Range Check — amount_usd", table: "orders_fact", type: "Range", status: "passing", lastRun: "5 min ago" },
-                  { name: "Referential Integrity — product_id", table: "inventory_snapshot", type: "FK Check", status: "failing", lastRun: "4 min ago" },
-                  { name: "Freshness — 24h SLA", table: "marketing_attribution", type: "Freshness", status: "failing", lastRun: "26 hours ago" },
-                  { name: "Uniqueness — order_id", table: "orders_fact", type: "Unique", status: "passing", lastRun: "7 min ago" },
-                ].map((rule, i) => (
-                  <div key={i} className="px-5 py-3.5 flex items-center gap-4 hover:bg-slate-50">
-                    <span className={`w-2 h-2 rounded-full flex-shrink-0 ${rule.status === "passing" ? "bg-emerald-500" : "bg-red-500"}`} />
-                    <div className="flex-1">
-                      <div className="text-sm font-medium text-slate-800">{rule.name}</div>
-                      <div className="text-xs text-slate-500">{rule.table} · {rule.type}</div>
-                    </div>
-                    <span className={`text-xs font-semibold ${rule.status === "passing" ? "text-emerald-700" : "text-red-700"}`}>
-                      {rule.status === "passing" ? "Passing" : "Failing"}
-                    </span>
-                    <span className="text-xs text-slate-400">{rule.lastRun}</span>
+              {[
+                { name: "Null Check — customer_id", table: "email_campaigns", type: "Not Null", status: "failing", lastRun: "2 min ago" },
+                { name: "Format Check — email", table: "customer_master", type: "Regex", status: "passing", lastRun: "3 min ago" },
+                { name: "Range Check — amount_usd", table: "orders_fact", type: "Range", status: "passing", lastRun: "5 min ago" },
+                { name: "Referential Integrity — product_id", table: "inventory_snapshot", type: "FK Check", status: "failing", lastRun: "4 min ago" },
+                { name: "Freshness — 24h SLA", table: "marketing_attribution", type: "Freshness", status: "failing", lastRun: "26 hours ago" },
+                { name: "Uniqueness — order_id", table: "orders_fact", type: "Unique", status: "passing", lastRun: "7 min ago" },
+              ].map((rule, i) => (
+                <div key={i} style={{
+                  padding: '12px 18px', borderBottom: '1px solid #f5f0ea', display: 'flex', alignItems: 'center', gap: '12px',
+                  borderLeft: `3px solid ${rule.status === "passing" ? "#16a34a" : "var(--orange)"}`,
+                }}
+                  onMouseEnter={e => e.currentTarget.style.background='#faf8f5'} onMouseLeave={e => e.currentTarget.style.background='transparent'}>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: '13px', fontWeight: '600', color: 'var(--text)' }}>{rule.name}</div>
+                    <div style={{ fontSize: '11.5px', color: 'var(--muted)', marginTop: '2px' }}>{rule.table} · {rule.type}</div>
                   </div>
-                ))}
-              </div>
+                  <span style={{ fontSize: '12px', fontWeight: '700', color: rule.status === "passing" ? "#16a34a" : "var(--orange)" }}>
+                    {rule.status === "passing" ? "✓ Pass" : "✗ Fail"}
+                  </span>
+                  <span style={{ fontSize: '11.5px', color: 'var(--muted)' }}>{rule.lastRun}</span>
+                </div>
+              ))}
             </div>
           )}
         </div>
@@ -2356,87 +2556,92 @@ function DataIQApp({ authUser, handleLogout }) {
 
     const liveCount = displayAgents.filter(a => a.status === "active").length;
 
+    const agentIconBg = { profiling: '#eff6ff', validation: '#f0fdf4', lineage: '#f5f3ff', monitoring: '#fff7ed', governance: '#fff1f2', ingestion: '#f0fdf4' };
     return (
-      <div className="flex-1 overflow-auto bg-slate-50">
-        <div className="p-6 max-w-7xl mx-auto space-y-5">
-          <div className="flex items-center justify-between">
-            <h2 className="text-xl font-bold text-slate-900">AI Agent Orchestration</h2>
-            <div className="flex items-center gap-3">
+      <div className="flex-1 overflow-auto" style={{ background: 'var(--bg)' }}>
+        <div style={{ padding: '22px 24px', maxWidth: '1200px', margin: '0 auto' }}>
+          {/* Header */}
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '20px' }}>
+            <h1 style={{ fontSize: '20px', fontWeight: '700', color: 'var(--text)', display: 'flex', alignItems: 'center', gap: '6px' }}>
+              AI Agents <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: 'var(--orange)', display: 'inline-block', verticalAlign: 'middle' }} />
+            </h1>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
               {backendOnline
-                ? <span className="flex items-center gap-1.5 text-xs bg-emerald-50 text-emerald-700 border border-emerald-200 px-3 py-1.5 rounded-full font-medium"><Wifi className="w-3.5 h-3.5" />Live — {liveCount} of {displayAgents.length} running</span>
-                : <span className="flex items-center gap-1.5 text-xs bg-amber-50 text-amber-700 border border-amber-200 px-3 py-1.5 rounded-full font-medium"><WifiOff className="w-3.5 h-3.5" />Demo mode — start backend to go live</span>
+                ? <span style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', fontWeight: '600', background: 'rgba(22,163,74,.08)', color: '#16a34a', border: '1px solid rgba(22,163,74,.2)', padding: '5px 12px', borderRadius: '20px' }}><Wifi style={{ width: '13px', height: '13px' }} />Live — {liveCount} of {displayAgents.length} active</span>
+                : <span style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', fontWeight: '600', background: 'rgba(202,138,4,.08)', color: '#ca8a04', border: '1px solid rgba(202,138,4,.2)', padding: '5px 12px', borderRadius: '20px' }}><WifiOff style={{ width: '13px', height: '13px' }} />Demo mode</span>
               }
             </div>
           </div>
 
           {!backendOnline && (
-            <div className="bg-[#fdf3ee] border border-[#e8622b]/30 rounded-xl px-5 py-4 flex items-start gap-3">
-              <Bot className="w-5 h-5 text-[#e8622b] flex-shrink-0 mt-0.5" />
+            <div style={{ background: 'rgba(232,98,43,.06)', border: '1px solid rgba(232,98,43,.2)', borderRadius: '12px', padding: '14px 18px', display: 'flex', gap: '12px', alignItems: 'flex-start', marginBottom: '16px' }}>
+              <Bot style={{ width: '18px', height: '18px', color: 'var(--orange)', flexShrink: 0, marginTop: '2px' }} />
               <div>
-                <div className="text-sm font-semibold text-blue-900">Start the backend to activate real agents</div>
-                <div className="text-xs text-[#c94d1a] mt-1">Open a Terminal in <code className="bg-blue-100 px-1 py-0.5 rounded">Data Quality App/backend/</code> and double-click <strong>Start Backend.command</strong>. Agents will connect automatically.</div>
+                <div style={{ fontSize: '13px', fontWeight: '600', color: 'var(--dark)' }}>Start the backend to activate real agents</div>
+                <div style={{ fontSize: '12px', color: 'var(--muted)', marginTop: '3px' }}>Double-click <strong>Start Backend.command</strong> — agents will connect automatically.</div>
               </div>
             </div>
           )}
 
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          {/* Agent grid */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '14px', marginBottom: '16px' }}>
             {displayAgents.map(agent => {
               const agentId = agent.id;
               const status  = agent.status;
               const isActive = status === "active";
               const mockMeta = mockAgents.find(m => m.id === agentId || m.name === agent.name) || {};
+              const bg = agentIconBg[agent.type] || '#f8f8f8';
               return (
-                <div key={agentId} className="bg-white rounded-xl border border-slate-200 shadow-sm p-5">
-                  <div className="flex items-start justify-between mb-3">
-                    <div className="flex items-center gap-3">
-                      <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${isActive ? "bg-emerald-50" : "bg-slate-100"}`}>
-                        <Bot className={`w-5 h-5 ${isActive ? "text-emerald-600" : "text-slate-400"}`} />
+                <div key={agentId} style={{
+                  background: 'var(--card)', borderRadius: '16px', border: '1px solid var(--border)',
+                  borderTop: `3px solid ${isActive ? '#16a34a' : 'var(--border)'}`,
+                  padding: '16px 18px',
+                }}>
+                  <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: '12px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                      <div style={{ width: '38px', height: '38px', borderRadius: '10px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '18px', background: bg, flexShrink: 0 }}>
+                        {mockMeta.icon || '🤖'}
                       </div>
                       <div>
-                        <div className="font-semibold text-slate-800 text-sm">{agent.name}</div>
+                        <div style={{ fontSize: '13.5px', fontWeight: '700', color: 'var(--text)' }}>{agent.name}</div>
                         <AgentTypeBadge type={agent.type} />
                       </div>
                     </div>
-                    <button
-                      onClick={() => toggleAgent(agentId, status)}
-                      disabled={!backendOnline}
-                      className={`p-2 rounded-lg transition-colors ${!backendOnline ? "opacity-40 cursor-not-allowed" : ""} ${isActive ? "hover:bg-red-50 text-emerald-600 hover:text-red-600" : "hover:bg-emerald-50 text-slate-400 hover:text-emerald-600"}`}
-                      title={backendOnline ? (isActive ? "Stop agent" : "Start agent") : "Start backend first"}
-                    >
-                      {isActive ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4" />}
-                    </button>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <span style={{ fontSize: '11px', fontWeight: '700', padding: '3px 9px', borderRadius: '20px', background: isActive ? 'rgba(22,163,74,.1)' : 'rgba(107,114,128,.08)', color: isActive ? '#16a34a' : '#6b7280' }}>
+                        {isActive ? 'Active' : 'Idle'}
+                      </span>
+                      <button
+                        onClick={() => toggleAgent(agentId, status)}
+                        disabled={!backendOnline}
+                        style={{ padding: '6px', background: 'none', border: 'none', borderRadius: '8px', cursor: backendOnline ? 'pointer' : 'not-allowed', opacity: backendOnline ? 1 : 0.4, color: isActive ? '#16a34a' : 'var(--muted)' }}
+                        title={backendOnline ? (isActive ? "Stop agent" : "Start agent") : "Start backend first"}
+                      >
+                        {isActive ? <Pause style={{ width: '14px', height: '14px' }} /> : <Play style={{ width: '14px', height: '14px' }} />}
+                      </button>
+                    </div>
                   </div>
-                  <p className="text-xs text-slate-500 mb-4 leading-relaxed">{mockMeta.description || agent.description || ""}</p>
-                  <div className="grid grid-cols-3 gap-2 text-center">
+                  <p style={{ fontSize: '12px', color: 'var(--muted)', lineHeight: '1.5', marginBottom: '12px' }}>{mockMeta.description || agent.description || ""}</p>
+                  {/* Stats */}
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '6px', marginBottom: '10px' }}>
                     {[
-                      { label: "Completed", value: (agent.tasks_completed ?? agent.tasksCompleted ?? 0).toLocaleString() },
-                      { label: "Failed",    value: (agent.tasks_failed ?? 0).toLocaleString() },
-                      { label: "Uptime",    value: agent.uptime ? agent.uptime.split(".")[0] : (mockMeta.avgRuntime || "—") },
+                      { label: "Total", value: (agent.tasks_completed ?? agent.tasksCompleted ?? mockMeta.tasksCompleted ?? 0).toLocaleString() },
+                      { label: "Today",    value: (agent.tasks_today ?? mockMeta.today ?? 0).toString() },
+                      { label: "Avg time",    value: agent.uptime ? agent.uptime.split(".")[0] : (mockMeta.avgRuntime || "—") },
                     ].map(({ label, value }) => (
-                      <div key={label} className="bg-slate-50 rounded-lg p-2">
-                        <div className="text-sm font-bold text-slate-800">{value}</div>
-                        <div className="text-xs text-slate-500">{label}</div>
+                      <div key={label} style={{ background: 'var(--bg)', borderRadius: '8px', padding: '8px 6px', textAlign: 'center' }}>
+                        <div style={{ fontSize: '14px', fontWeight: '700', color: 'var(--text)' }}>{value}</div>
+                        <div style={{ fontSize: '10.5px', color: 'var(--muted)', marginTop: '2px' }}>{label}</div>
                       </div>
                     ))}
                   </div>
-                  {/* Recent activity from live agent */}
-                  {backendOnline && agent.recent_activity?.length > 0 && (
-                    <div className="mt-3 pt-3 border-t border-slate-100">
-                      <div className="text-xs text-slate-400 mb-1">Recent activity</div>
-                      {agent.recent_activity.slice(-3).reverse().map((a, i) => (
-                        <div key={i} className="text-xs text-slate-600 truncate flex items-center gap-1">
-                          <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${a.status === "error" ? "bg-red-400" : a.status === "success" ? "bg-emerald-400" : "bg-blue-400"}`} />
-                          {a.activity}
-                        </div>
-                      ))}
+                  {/* Footer */}
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingTop: '10px', borderTop: '1px solid var(--border)' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+                      <span style={{ width: '7px', height: '7px', borderRadius: '50%', background: isActive ? '#16a34a' : '#d1d5db', display: 'inline-block' }} />
+                      <span style={{ fontSize: '11.5px', color: 'var(--muted)', textTransform: 'capitalize' }}>{status}</span>
                     </div>
-                  )}
-                  <div className="mt-3 pt-3 border-t border-slate-100 flex items-center justify-between">
-                    <div className="flex items-center gap-1.5">
-                      <span className={`w-2 h-2 rounded-full ${isActive ? "bg-emerald-500 animate-pulse" : "bg-slate-300"}`} />
-                      <span className="text-xs text-slate-500 capitalize">{status}</span>
-                    </div>
-                    <span className="text-xs text-slate-400">
+                    <span style={{ fontSize: '11px', color: 'var(--muted)' }}>
                       {agent.last_run ? `Last: ${new Date(agent.last_run).toLocaleTimeString()}` : (agent.lastRun ? `Last: ${agent.lastRun}` : "Never run")}
                     </span>
                   </div>
@@ -2446,28 +2651,28 @@ function DataIQApp({ authUser, handleLogout }) {
           </div>
 
           {/* Live log */}
-          <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
-            <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <span className={`w-2 h-2 rounded-full ${backendOnline ? "bg-emerald-500 animate-pulse" : "bg-slate-400"}`} />
-                <h3 className="text-sm font-semibold text-slate-800">
+          <div style={{ background: 'var(--card)', borderRadius: '16px', border: '1px solid var(--border)', overflow: 'hidden' }}>
+            <div style={{ padding: '14px 18px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <span style={{ width: '7px', height: '7px', borderRadius: '50%', background: backendOnline ? '#16a34a' : '#d1d5db', display: 'inline-block' }} />
+                <span style={{ fontSize: '13px', fontWeight: '600', color: 'var(--text)' }}>
                   {backendOnline ? "Live WebSocket Log" : "Simulated Activity Log"}
-                </h3>
+                </span>
               </div>
-              <span className="text-xs text-slate-400">{agentLogs.length} entries</span>
+              <span style={{ fontSize: '11.5px', color: 'var(--muted)' }}>{agentLogs.length} entries</span>
             </div>
-            <div className="p-4 h-64 overflow-auto font-mono space-y-1">
+            <div style={{ padding: '14px 18px', height: '220px', overflow: 'auto', fontFamily: 'ui-monospace, monospace', display: 'flex', flexDirection: 'column', gap: '4px' }}>
               {agentLogs.slice().reverse().map(log => (
-                <div key={log.id} className="text-xs flex gap-3">
-                  <span className="text-slate-400 flex-shrink-0">{log.timestamp}</span>
-                  <span className={`flex-shrink-0 font-bold ${log.level === "error" ? "text-red-500" : log.level === "warn" ? "text-yellow-500" : "text-emerald-500"}`}>
+                <div key={log.id} style={{ fontSize: '11.5px', display: 'flex', gap: '10px' }}>
+                  <span style={{ color: 'var(--muted)', flexShrink: 0 }}>{log.timestamp}</span>
+                  <span style={{ flexShrink: 0, fontWeight: '700', color: log.level === "error" ? "#dc2626" : log.level === "warn" ? "#ca8a04" : "#16a34a" }}>
                     [{(log.level || "info").toUpperCase()}]
                   </span>
-                  <span className="text-[#e8622b] flex-shrink-0">[{log.agent}]</span>
-                  <span className="text-slate-700">{log.message}</span>
+                  <span style={{ color: 'var(--orange)', flexShrink: 0 }}>[{log.agent}]</span>
+                  <span style={{ color: 'var(--text)' }}>{log.message}</span>
                 </div>
               ))}
-              {agentLogs.length === 0 && <div className="text-slate-400 text-xs">Waiting for agent activity…</div>}
+              {agentLogs.length === 0 && <div style={{ color: 'var(--muted)', fontSize: '12px' }}>Waiting for agent activity…</div>}
             </div>
           </div>
         </div>
@@ -2523,7 +2728,7 @@ function DataIQApp({ authUser, handleLogout }) {
     const counts = { all: allTasks.length, pending: allTasks.filter(t => t.status === "pending").length, in_progress: allTasks.filter(t => t.status === "in_progress").length, completed: allTasks.filter(t => t.status === "completed").length };
 
     return (
-      <div className="flex-1 overflow-auto bg-slate-50">
+      <div className="flex-1 overflow-auto" style={{ background: "var(--bg)" }}>
         <div className="p-6 max-w-5xl mx-auto space-y-5">
           <div className="flex items-center justify-between">
             <h2 className="text-xl font-bold text-slate-900">Agent Task Queue</h2>
@@ -2658,9 +2863,11 @@ function DataIQApp({ authUser, handleLogout }) {
 
   // ── GOVERNANCE TAB ─────────────────────────────────────────────────────────
   const GovernanceTab = () => (
-    <div className="flex-1 overflow-auto bg-slate-50">
+    <div className="flex-1 overflow-auto" style={{ background: "var(--bg)" }}>
       <div className="p-6 max-w-7xl mx-auto space-y-6">
-        <h2 className="text-xl font-bold text-slate-900">Governance & Compliance</h2>
+        <h1 style={{ fontSize: '20px', fontWeight: '700', color: 'var(--text)', display: 'flex', alignItems: 'center', gap: '6px' }}>
+          Governance <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: 'var(--orange)', display: 'inline-block', verticalAlign: 'middle' }} />
+        </h1>
 
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
           {[
@@ -2802,76 +3009,72 @@ function DataIQApp({ authUser, handleLogout }) {
       await loadRealConnections();
     };
 
-    const statusDot = conn.status === "ok"
-      ? "bg-emerald-500"
-      : conn.status === "error"
-      ? "bg-red-500"
-      : "bg-yellow-400";
-
+    const statusColor = conn.status === "ok" ? "#16a34a" : conn.status === "error" ? "#dc2626" : "#ca8a04";
+    const statusLabel = conn.status === "ok" ? "Live" : conn.status === "error" ? "Error" : conn.status || "Unknown";
     const connectorIcons = { postgresql: "🐘", fabric: "🪟", snowflake: "❄️", bigquery: "☁️", redshift: "🔴" };
 
     return (
-      <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+      <div style={{ background: 'var(--card)', borderRadius: '16px', border: '1px solid var(--border)', borderLeft: `3px solid ${statusColor}`, overflow: 'hidden' }}>
         {/* Card header */}
-        <div className="p-5">
-          <div className="flex items-start justify-between mb-3">
-            <div className="flex items-start gap-3">
-              <div className="w-10 h-10 rounded-xl bg-[#fdf3ee] flex items-center justify-center text-xl flex-shrink-0">
+        <div style={{ padding: '18px' }}>
+          <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: '14px' }}>
+            <div style={{ display: 'flex', alignItems: 'flex-start', gap: '12px' }}>
+              <div style={{ width: '40px', height: '40px', borderRadius: '10px', background: 'var(--bg)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '20px', flexShrink: 0 }}>
                 {connectorIcons[conn.connector_type] || "🔌"}
               </div>
               <div>
-                <div className="flex items-center gap-2">
-                  <span className="font-semibold text-slate-800">{conn.name}</span>
-                  <span className="text-xs bg-slate-100 text-slate-600 px-2 py-0.5 rounded font-mono">{conn.connector_type}</span>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <span style={{ fontSize: '14px', fontWeight: '700', color: 'var(--text)' }}>{conn.name}</span>
+                  <span style={{ fontSize: '11px', background: 'var(--bg)', color: 'var(--muted)', padding: '2px 7px', borderRadius: '6px', fontFamily: 'ui-monospace, monospace' }}>{conn.connector_type}</span>
                 </div>
-                {conn.description && <div className="text-xs text-slate-500 mt-0.5">{conn.description}</div>}
+                {conn.description && <div style={{ fontSize: '11.5px', color: 'var(--muted)', marginTop: '2px' }}>{conn.description}</div>}
               </div>
             </div>
-            <div className="flex items-center gap-1.5">
-              <div className={`w-2.5 h-2.5 rounded-full ${statusDot}`} />
-              <span className="text-xs font-medium text-slate-600 capitalize">{conn.status}</span>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+              <span style={{ width: '7px', height: '7px', borderRadius: '50%', background: statusColor, display: 'inline-block' }} />
+              <span style={{ fontSize: '12px', fontWeight: '600', color: statusColor }}>{statusLabel}</span>
             </div>
           </div>
 
           {/* Stats row */}
-          <div className="grid grid-cols-3 gap-2 text-center">
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: '8px', textAlign: 'center' }}>
             {[
               { label: "Tables Found", value: conn.table_count || "—" },
               { label: "Latency",      value: conn.latency_ms ? `${conn.latency_ms}ms` : "—" },
               { label: "Last Tested",  value: conn.last_tested_at ? new Date(conn.last_tested_at).toLocaleTimeString() : "Never" },
             ].map(({ label, value }) => (
-              <div key={label} className="bg-slate-50 rounded-lg p-2.5">
-                <div className="text-sm font-bold text-slate-800">{value}</div>
-                <div className="text-xs text-slate-500">{label}</div>
+              <div key={label} style={{ background: 'var(--bg)', borderRadius: '8px', padding: '9px 6px' }}>
+                <div style={{ fontSize: '14px', fontWeight: '700', color: 'var(--text)' }}>{value}</div>
+                <div style={{ fontSize: '10.5px', color: 'var(--muted)', marginTop: '2px' }}>{label}</div>
               </div>
             ))}
           </div>
 
           {/* Error message */}
           {conn.last_test_error && (
-            <div className="mt-3 p-2.5 bg-red-50 border border-red-200 rounded-lg">
-              <p className="text-xs text-red-600 font-mono">{conn.last_test_error}</p>
+            <div style={{ marginTop: '10px', padding: '9px 12px', background: 'rgba(220,38,38,.06)', border: '1px solid rgba(220,38,38,.2)', borderRadius: '8px' }}>
+              <p style={{ fontSize: '11px', color: '#dc2626', fontFamily: 'ui-monospace, monospace' }}>{conn.last_test_error}</p>
             </div>
           )}
 
           {/* Inline test result */}
           {tr && !tr.testing && (
-            <div className={`mt-3 p-2.5 rounded-lg border text-xs ${tr.success ? "bg-emerald-50 border-emerald-200 text-emerald-700" : "bg-red-50 border-red-200 text-red-600"}`}>
+            <div style={{ marginTop: '10px', padding: '9px 12px', borderRadius: '8px', fontSize: '12px', border: `1px solid ${tr.success ? 'rgba(22,163,74,.2)' : 'rgba(220,38,38,.2)'}`, background: tr.success ? 'rgba(22,163,74,.06)' : 'rgba(220,38,38,.06)', color: tr.success ? '#16a34a' : '#dc2626' }}>
               {tr.success ? `✓ ${tr.message} · ${tr.latency_ms}ms` : `✗ ${tr.error || tr.message}`}
             </div>
           )}
 
           {/* Action buttons */}
-          <div className="flex gap-2 mt-4">
+          <div style={{ display: 'flex', gap: '8px', marginTop: '14px' }}>
             <button onClick={handleTest}
               disabled={tr?.testing}
-              className="flex-1 flex items-center justify-center gap-1.5 text-xs py-2 border border-slate-200 rounded-lg hover:bg-slate-50 text-slate-600 disabled:opacity-50">
-              {tr?.testing ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Zap className="w-3.5 h-3.5" />}
+              style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '5px', fontSize: '12.5px', fontWeight: '500', padding: '7px 0', border: '1px solid var(--border)', borderRadius: '8px', background: 'none', cursor: tr?.testing ? 'not-allowed' : 'pointer', color: 'var(--text)', fontFamily: 'inherit', opacity: tr?.testing ? 0.5 : 1 }}>
+              {tr?.testing ? <RefreshCw style={{ width: '13px', height: '13px' }} className="animate-spin" /> : <Zap style={{ width: '13px', height: '13px' }} />}
               Test
             </button>
             <button onClick={handleLoadSchemas}
-              className="flex-1 flex items-center justify-center gap-1.5 text-xs py-2 border border-slate-200 rounded-lg hover:bg-slate-50 text-slate-600">
-              <Layers className="w-3.5 h-3.5" />
+              style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '5px', fontSize: '12.5px', fontWeight: '500', padding: '7px 0', border: '1px solid var(--border)', borderRadius: '8px', background: 'none', cursor: 'pointer', color: 'var(--text)', fontFamily: 'inherit' }}>
+              <Layers style={{ width: '13px', height: '13px' }} />
               {isExpanded ? "Hide Schema" : "Browse Schema"}
             </button>
             <button
@@ -2880,66 +3083,65 @@ function DataIQApp({ authUser, handleLogout }) {
                 await apiFetch(`/api/connections/${conn.id}`, { method: "DELETE" });
                 await loadRealConnections();
               }}
-              className="px-3 py-2 border border-red-200 rounded-lg hover:bg-red-50 text-red-500">
-              <Trash2 className="w-3.5 h-3.5" />
+              style={{ padding: '7px 12px', border: '1px solid rgba(220,38,38,.3)', borderRadius: '8px', background: 'none', cursor: 'pointer', color: '#dc2626' }}>
+              <Trash2 style={{ width: '13px', height: '13px' }} />
             </button>
           </div>
         </div>
 
         {/* Schema browser */}
         {isExpanded && (
-          <div className="border-t border-slate-100 bg-slate-50">
-            <div className="p-4">
-              <div className="flex items-center justify-between mb-3">
-                <h4 className="text-xs font-semibold text-slate-600 uppercase tracking-wide">Schemas & Tables</h4>
-                {discovering && <RefreshCw className="w-3.5 h-3.5 animate-spin text-blue-500" />}
+          <div style={{ borderTop: '1px solid var(--border)', background: 'var(--bg)' }}>
+            <div style={{ padding: '14px 18px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '10px' }}>
+                <span style={{ fontSize: '11px', fontWeight: '700', letterSpacing: '.07em', textTransform: 'uppercase', color: 'var(--orange)' }}>Schemas & Tables</span>
+                {discovering && <RefreshCw style={{ width: '13px', height: '13px' }} className="animate-spin text-blue-500" />}
               </div>
 
               {schemas.length === 0 && !discovering && (
-                <p className="text-xs text-slate-400 text-center py-2">
+                <p style={{ fontSize: '12px', color: 'var(--muted)', textAlign: 'center', padding: '8px 0' }}>
                   {conn.status !== "ok" ? "Test connection first to browse schemas" : "No schemas found"}
                 </p>
               )}
 
-              <div className="space-y-1.5">
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
                 {schemas.map(schema => (
-                  <div key={schema} className="rounded-lg border border-slate-200 bg-white overflow-hidden">
+                  <div key={schema} style={{ borderRadius: '10px', border: '1px solid var(--border)', background: 'var(--card)', overflow: 'hidden' }}>
                     <button
                       onClick={() => handleDiscover(schema)}
-                      className="w-full flex items-center justify-between px-3 py-2.5 text-xs font-semibold text-slate-700 hover:bg-slate-50">
-                      <div className="flex items-center gap-2">
-                        <Layers className="w-3.5 h-3.5 text-blue-500" />
+                      style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '9px 12px', background: 'none', border: 'none', cursor: 'pointer', fontFamily: 'inherit' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '7px', fontSize: '12.5px', fontWeight: '600', color: 'var(--text)' }}>
+                        <Layers style={{ width: '13px', height: '13px', color: 'var(--orange)' }} />
                         {schema}
                       </div>
-                      <span className="text-slate-400">Discover →</span>
+                      <span style={{ fontSize: '11.5px', color: 'var(--muted)' }}>Discover →</span>
                     </button>
 
                     {/* Tables under this schema */}
                     {tables.filter(t => t.schema_name === schema).length > 0 && (
-                      <div className="border-t border-slate-100">
+                      <div style={{ borderTop: '1px solid var(--border)' }}>
                         {tables.filter(t => t.schema_name === schema).map(tbl => (
                           <div key={tbl.id}
-                            className="flex items-center justify-between px-3 py-2 text-xs hover:bg-[#fdf3ee] group border-t border-slate-50 first:border-0">
-                            <div className="flex items-center gap-2 min-w-0">
-                              <Table className="w-3 h-3 text-slate-400 flex-shrink-0" />
-                              <span className="font-mono text-slate-700 truncate">{tbl.table_name}</span>
-                              <span className="text-slate-400">{tbl.row_count?.toLocaleString()} rows</span>
+                            style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '7px 12px', borderTop: '1px solid #f5f0ea', fontSize: '12px', cursor: 'default' }}
+                            onMouseEnter={e => e.currentTarget.style.background='rgba(232,98,43,.04)'} onMouseLeave={e => e.currentTarget.style.background='transparent'}
+                            className="group">
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', minWidth: 0, flex: 1 }}>
+                              <Table style={{ width: '12px', height: '12px', color: 'var(--muted)', flexShrink: 0 }} />
+                              <span style={{ fontFamily: 'ui-monospace, monospace', color: 'var(--text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{tbl.table_name}</span>
+                              <span style={{ color: 'var(--muted)', fontSize: '11px', flexShrink: 0 }}>{tbl.row_count?.toLocaleString()} rows</span>
                             </div>
-                            <div className="flex items-center gap-2">
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                               {tbl.quality_score && (
-                                <span className={`px-1.5 py-0.5 rounded text-xs font-semibold ${
-                                  tbl.quality_score >= 90 ? "bg-emerald-100 text-emerald-700"
-                                  : tbl.quality_score >= 70 ? "bg-yellow-100 text-yellow-700"
-                                  : "bg-red-100 text-red-700"
-                                }`}>{tbl.quality_score}%</span>
+                                <span style={{ fontSize: '11px', fontWeight: '700', padding: '2px 6px', borderRadius: '20px', background: tbl.quality_score >= 90 ? 'rgba(22,163,74,.1)' : tbl.quality_score >= 70 ? 'rgba(202,138,4,.1)' : 'rgba(220,38,38,.1)', color: tbl.quality_score >= 90 ? '#16a34a' : tbl.quality_score >= 70 ? '#ca8a04' : '#dc2626' }}>{tbl.quality_score}%</span>
                               )}
                               <button
                                 onClick={() => handleProfileTable(schema, tbl.table_name)}
                                 disabled={profilingTable === `${schema}.${tbl.table_name}`}
-                                className="opacity-0 group-hover:opacity-100 px-2 py-1 bg-[#e8622b] text-white rounded text-xs hover:opacity-90 disabled:opacity-50 flex items-center gap-1">
+                                className="opacity-0 group-hover:opacity-100"
+                                style={{ padding: '3px 8px', background: 'var(--orange)', color: '#fff', border: 'none', borderRadius: '6px', fontSize: '11px', cursor: 'pointer', fontFamily: 'inherit', display: 'flex', alignItems: 'center', gap: '4px' }}>
                                 {profilingTable === `${schema}.${tbl.table_name}`
-                                  ? <RefreshCw className="w-3 h-3 animate-spin" />
-                                  : <Zap className="w-3 h-3" />}
+                                  ? <RefreshCw style={{ width: '11px', height: '11px' }} className="animate-spin" />
+                                  : <Zap style={{ width: '11px', height: '11px' }} />}
                                 Profile
                               </button>
                             </div>
@@ -3029,46 +3231,48 @@ function DataIQApp({ authUser, handleLogout }) {
 
   // ── Connections Tab ────────────────────────────────────────────────────────
   const ConnectionsTab = () => (
-    <div className="flex-1 overflow-auto bg-slate-50">
+    <div className="flex-1 overflow-auto" style={{ background: 'var(--bg)' }}>
       {profileResult && <ProfileResultModal />}
 
-      <div className="p-6 max-w-7xl mx-auto space-y-5">
+      <div style={{ padding: '22px 24px', maxWidth: '1200px', margin: '0 auto' }}>
         {/* Header */}
-        <div className="flex items-center justify-between">
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '20px' }}>
           <div>
-            <h2 className="text-xl font-bold text-slate-900">Data Connections</h2>
-            <p className="text-sm text-slate-500 mt-0.5">
+            <h1 style={{ fontSize: '20px', fontWeight: '700', color: 'var(--text)', display: 'flex', alignItems: 'center', gap: '6px' }}>
+              Connections <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: 'var(--orange)', display: 'inline-block', verticalAlign: 'middle' }} />
+            </h1>
+            <p style={{ fontSize: '12.5px', color: 'var(--muted)', marginTop: '3px' }}>
               {realConnections.length} connection{realConnections.length !== 1 ? "s" : ""} · plug-and-play warehouse connectivity
             </p>
           </div>
           <button
             onClick={() => setShowNewConn(true)}
-            className="flex items-center gap-1.5 px-4 py-2 bg-[#e8622b] text-white text-sm rounded-lg hover:opacity-90 shadow-sm font-medium">
-            <Plus className="w-4 h-4" /> New Connection
+            style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '9px 18px', background: 'var(--orange)', color: '#fff', border: 'none', borderRadius: '10px', fontSize: '13px', fontWeight: '600', cursor: 'pointer', fontFamily: 'inherit' }}>
+            <Plus style={{ width: '14px', height: '14px' }} /> New Connection
           </button>
         </div>
 
         {/* Backend offline banner */}
         {!backendOnline && (
-          <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 flex items-center gap-3">
-            <AlertTriangle className="w-5 h-5 text-amber-500 flex-shrink-0" />
+          <div style={{ background: 'rgba(202,138,4,.07)', border: '1px solid rgba(202,138,4,.25)', borderRadius: '12px', padding: '12px 18px', display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '16px' }}>
+            <AlertTriangle style={{ width: '18px', height: '18px', color: '#ca8a04', flexShrink: 0 }} />
             <div>
-              <p className="text-sm font-semibold text-amber-800">Backend Offline</p>
-              <p className="text-xs text-amber-600 mt-0.5">Start the backend: <code className="font-mono bg-amber-100 px-1 rounded">uvicorn main:app --reload --port 8000</code></p>
+              <p style={{ fontSize: '13px', fontWeight: '600', color: 'var(--dark)' }}>Backend Offline</p>
+              <p style={{ fontSize: '12px', color: 'var(--muted)', marginTop: '2px' }}>Start the backend: <code style={{ fontFamily: 'ui-monospace, monospace', background: 'rgba(202,138,4,.12)', padding: '1px 5px', borderRadius: '4px', fontSize: '11px' }}>uvicorn main:app --reload --port 8000</code></p>
             </div>
           </div>
         )}
 
         {/* Empty state */}
         {backendOnline && realConnections.length === 0 && (
-          <div className="bg-white rounded-xl border border-dashed border-slate-300 p-12 text-center">
-            <Database className="w-12 h-12 text-slate-300 mx-auto mb-4" />
-            <h3 className="font-semibold text-slate-700 mb-2">No connections yet</h3>
-            <p className="text-sm text-slate-500 mb-5 max-w-sm mx-auto">
+          <div style={{ background: 'var(--card)', borderRadius: '16px', border: '2px dashed var(--border)', padding: '48px 24px', textAlign: 'center', marginBottom: '16px' }}>
+            <Database style={{ width: '48px', height: '48px', color: 'var(--border)', margin: '0 auto 16px' }} />
+            <h3 style={{ fontSize: '15px', fontWeight: '700', color: 'var(--text)', marginBottom: '8px' }}>No connections yet</h3>
+            <p style={{ fontSize: '13px', color: 'var(--muted)', marginBottom: '20px', maxWidth: '360px', margin: '0 auto 20px', lineHeight: '1.5' }}>
               Connect your first data warehouse to start profiling, discovering, and monitoring data quality.
             </p>
             <button onClick={() => setShowNewConn(true)}
-              className="px-5 py-2.5 bg-[#e8622b] text-white text-sm rounded-lg hover:opacity-90 font-medium">
+              style={{ padding: '9px 22px', background: 'var(--orange)', color: '#fff', border: 'none', borderRadius: '10px', fontSize: '13px', fontWeight: '600', cursor: 'pointer', fontFamily: 'inherit' }}>
               Add your first connection
             </button>
           </div>
@@ -3076,7 +3280,7 @@ function DataIQApp({ authUser, handleLogout }) {
 
         {/* Real connection cards */}
         {realConnections.length > 0 && (
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '14px', marginBottom: '16px' }}>
             {realConnections.map(conn => (
               <RealConnectionCard key={conn.id} conn={conn} />
             ))}
@@ -3084,9 +3288,9 @@ function DataIQApp({ authUser, handleLogout }) {
         )}
 
         {/* Supported warehouse types */}
-        <div className="bg-white rounded-xl border border-slate-200 p-5">
-          <h3 className="text-sm font-semibold text-slate-700 mb-3">Supported Warehouse Types</h3>
-          <div className="flex flex-wrap gap-2">
+        <div style={{ background: 'var(--card)', borderRadius: '16px', border: '1px solid var(--border)', padding: '18px' }}>
+          <div style={{ fontSize: '12px', fontWeight: '700', letterSpacing: '.07em', textTransform: 'uppercase', color: 'var(--orange)', marginBottom: '12px' }}>Supported Warehouse Types</div>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
             {[
               { icon: "🐘", name: "PostgreSQL", status: "available" },
               { icon: "🪟", name: "Microsoft Fabric", status: "available" },
@@ -3095,12 +3299,15 @@ function DataIQApp({ authUser, handleLogout }) {
               { icon: "🔴", name: "Redshift", status: "coming-soon" },
               { icon: "🧱", name: "Databricks", status: "coming-soon" },
             ].map(wh => (
-              <div key={wh.name} className={`flex items-center gap-2 px-3 py-2 rounded-lg border text-sm ${
-                wh.status === "available" ? "border-[#e8622b]/30 bg-[#fdf3ee] text-[#c94d1a]" : "border-slate-200 bg-slate-50 text-slate-400"
-              }`}>
+              <div key={wh.name} style={{
+                display: 'flex', alignItems: 'center', gap: '6px', padding: '7px 12px', borderRadius: '8px', fontSize: '12.5px', fontWeight: '500',
+                border: wh.status === "available" ? '1px solid rgba(232,98,43,.3)' : '1px solid var(--border)',
+                background: wh.status === "available" ? 'rgba(232,98,43,.06)' : 'var(--bg)',
+                color: wh.status === "available" ? 'var(--orange)' : 'var(--muted)',
+              }}>
                 <span>{wh.icon}</span>
-                <span className="font-medium">{wh.name}</span>
-                {wh.status === "coming-soon" && <span className="text-xs">soon</span>}
+                <span>{wh.name}</span>
+                {wh.status === "coming-soon" && <span style={{ fontSize: '10px' }}>soon</span>}
               </div>
             ))}
           </div>
@@ -3128,10 +3335,10 @@ function DataIQApp({ authUser, handleLogout }) {
   };
 
   return (
-    <div className="flex h-screen bg-slate-100 overflow-hidden font-sans" onClick={() => notifOpen && setNotifOpen(false)}>
+    <div style={{ display: 'flex', height: '100vh', overflow: 'hidden', background: 'var(--bg)' }}>
       <Sidebar />
-      <div className="flex-1 flex flex-col min-w-0">
-        <TopBar />
+      <InfoPanel activeTab={activeTab} catalogTables={catalogTables} catalogIssues={catalogIssues} mockAgents={mockAgents} realConnections={realConnections} backendOnline={backendOnline} onAddConnection={() => setShowNewConn(true)} />
+      <div style={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column', minWidth: 0 }}>
         <ErrorBoundary key={activeTab}>{renderTab()}</ErrorBoundary>
       </div>
       {/* Connection wizard rendered at top level so DataIQApp re-renders never reset its state */}
