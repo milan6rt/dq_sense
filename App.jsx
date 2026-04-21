@@ -17,7 +17,7 @@ class ErrorBoundary extends Component {
             <p className="text-sm text-slate-500 mb-4">{this.state.error?.message}</p>
             <button
               onClick={() => this.setState({ error: null })}
-              className="px-4 py-2 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-700"
+              className="px-4 py-2 bg-[#e8622b] text-white text-sm rounded-lg hover:opacity-90"
             >
               Try again
             </button>
@@ -391,7 +391,7 @@ const SeverityBadge = ({ severity }) => {
   const cfg = {
     high:   "bg-red-100 text-red-700 border-red-200",
     medium: "bg-yellow-100 text-yellow-700 border-yellow-200",
-    low:    "bg-blue-50 text-blue-700 border-blue-200",
+    low:    "bg-[#fdf3ee] text-[#c94d1a] border-[#e8622b]/30",
   };
   return <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-semibold border ${cfg[severity]}`}>{severity.charAt(0).toUpperCase() + severity.slice(1)}</span>;
 };
@@ -399,7 +399,7 @@ const SeverityBadge = ({ severity }) => {
 const AgentTypeBadge = ({ type }) => {
   const cfg = {
     profiling:   "bg-purple-100 text-purple-700",
-    validation:  "bg-blue-100 text-blue-700",
+    validation:  "bg-blue-100 text-[#c94d1a]",
     lineage:     "bg-indigo-100 text-indigo-700",
     monitoring:  "bg-orange-100 text-orange-700",
     governance:  "bg-teal-100 text-teal-700",
@@ -414,7 +414,7 @@ const ConnStatusDot = ({ status }) => {
 };
 
 const Avatar = ({ name = '?', size = 7 }) => {
-  const colors = ["bg-blue-500","bg-purple-500","bg-emerald-500","bg-orange-500","bg-rose-500","bg-indigo-500"];
+  const colors = ["bg-[#fdf3ee]0","bg-purple-500","bg-emerald-500","bg-orange-500","bg-rose-500","bg-indigo-500"];
   const safeName = name || '?';
   const idx = safeName.charCodeAt(0) % colors.length;
   return (
@@ -519,7 +519,7 @@ const LineageGraph = ({ tableId, allTables, onNodeClick }) => {
       {/* Layer labels */}
       <div className="absolute top-3 left-3 z-10 flex gap-2">
         <span className="bg-slate-700/80 text-white text-xs px-2 py-0.5 rounded">← Upstream Sources</span>
-        <span className="bg-blue-600/80 text-white text-xs px-2 py-0.5 rounded">Selected</span>
+        <span className="bg-[#e8622b]/80 text-white text-xs px-2 py-0.5 rounded">Selected</span>
         <span className="bg-slate-700/80 text-white text-xs px-2 py-0.5 rounded">Downstream →</span>
       </div>
 
@@ -721,7 +721,7 @@ function LoginScreen({ onToken }) {
         {/* Logo */}
         <div className="text-center mb-8">
           <div className="inline-flex items-center gap-3 mb-4">
-            <div className="w-12 h-12 bg-blue-500 rounded-xl flex items-center justify-center shadow-lg shadow-blue-500/30">
+            <div className="w-12 h-12 bg-[#fdf3ee]0 rounded-xl flex items-center justify-center shadow-lg shadow-blue-500/30">
               <Database className="w-7 h-7 text-white" />
             </div>
             <div className="text-left">
@@ -880,7 +880,7 @@ const ConnectionFormStep = ({ typeInfo, selectedType, connectorIcons, saving, on
           value={connName}
           onChange={e => setConnName(e.target.value)}
           placeholder="e.g. Production Database"
-          className="w-full px-3 py-2.5 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+          className="w-full px-3 py-2.5 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#e8622b] focus:border-[#e8622b]"
         />
       </div>
 
@@ -895,7 +895,7 @@ const ConnectionFormStep = ({ typeInfo, selectedType, connectorIcons, saving, on
               <select
                 value={formData[field.name] || field.default || ""}
                 onChange={e => setFormData(p => ({ ...p, [field.name]: e.target.value }))}
-                className="w-full px-3 py-2.5 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white">
+                className="w-full px-3 py-2.5 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#e8622b] bg-white">
                 {(field.options || []).map(o => <option key={o} value={o}>{o}</option>)}
               </select>
             ) : (
@@ -904,7 +904,7 @@ const ConnectionFormStep = ({ typeInfo, selectedType, connectorIcons, saving, on
                 value={formData[field.name] ?? (field.default ?? "")}
                 onChange={e => setFormData(p => ({ ...p, [field.name]: field.type === "number" ? Number(e.target.value) : e.target.value }))}
                 placeholder={field.placeholder}
-                className="w-full px-3 py-2.5 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                className="w-full px-3 py-2.5 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#e8622b] focus:border-[#e8622b]"
               />
             )}
             {field.help && <p className="text-xs text-slate-400 mt-1">{field.help}</p>}
@@ -920,7 +920,7 @@ const ConnectionFormStep = ({ typeInfo, selectedType, connectorIcons, saving, on
               value={formData[field.name] || ""}
               onChange={e => setFormData(p => ({ ...p, [field.name]: e.target.value }))}
               placeholder={field.placeholder}
-              className="w-full px-3 py-2.5 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-full px-3 py-2.5 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#e8622b]"
             />
           </div>
         ))}
@@ -933,7 +933,7 @@ const ConnectionFormStep = ({ typeInfo, selectedType, connectorIcons, saving, on
         <button
           onClick={() => onSave(connName, formData)}
           disabled={!connName || saving}
-          className="flex-1 px-5 py-2.5 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-700 disabled:opacity-40 font-medium flex items-center justify-center gap-2">
+          className="flex-1 px-5 py-2.5 bg-[#e8622b] text-white text-sm rounded-lg hover:opacity-90 disabled:opacity-40 font-medium flex items-center justify-center gap-2">
           {saving ? <><RefreshCw className="w-4 h-4 animate-spin" /> Testing…</> : "Save & Test Connection"}
         </button>
       </div>
@@ -1037,10 +1037,10 @@ const NewConnectionWizard = ({ connTypes, backendOnline, onClose, onConnectionCr
                   <button
                     key={ct.type}
                     onClick={() => { setSelectedType(ct.type); setStep(2); }}
-                    className="flex items-center gap-3 p-4 border border-slate-200 rounded-xl hover:border-blue-300 hover:bg-blue-50 text-left transition-colors group">
+                    className="flex items-center gap-3 p-4 border border-slate-200 rounded-xl hover:border-[#e8622b]/40 hover:bg-[#fdf3ee] text-left transition-colors group">
                     <span className="text-2xl">{connectorIcons[ct.type] || "🔌"}</span>
                     <div>
-                      <div className="font-semibold text-slate-800 text-sm group-hover:text-blue-700">{ct.display_name}</div>
+                      <div className="font-semibold text-slate-800 text-sm group-hover:text-[#c94d1a]">{ct.display_name}</div>
                       <div className="text-xs text-slate-400">{ct.type}</div>
                     </div>
                   </button>
@@ -1136,7 +1136,7 @@ const RulesTab = () => {
   };
   const closeForm = () => { setShowForm(false); setEditingId(null); setForm(BLANK_FORM); };
 
-  const severityColor = { low: "text-blue-500 bg-blue-50", medium: "text-yellow-600 bg-yellow-50", high: "text-orange-500 bg-orange-50", critical: "text-red-600 bg-red-50" };
+  const severityColor = { low: "text-blue-500 bg-[#fdf3ee]", medium: "text-yellow-600 bg-yellow-50", high: "text-orange-500 bg-orange-50", critical: "text-red-600 bg-red-50" };
   const statusColor   = { pass: "text-green-600 bg-green-50", fail: "text-red-600 bg-red-50", error: "text-slate-500 bg-slate-100" };
 
   const runRule = async (id) => {
@@ -1184,7 +1184,7 @@ const RulesTab = () => {
             <button onClick={async () => { const r = await apiFetch("/api/rules/run-all", { method: "POST" }); if (r) alert(`Ran ${r.total} rules: ${r.passed} passed, ${r.failed} failed`); }} className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg text-sm font-medium hover:bg-green-700">
               <Play className="w-4 h-4" /> Run All
             </button>
-            <button onClick={openCreate} className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700">
+            <button onClick={openCreate} className="flex items-center gap-2 px-4 py-2 bg-[#e8622b] text-white rounded-lg text-sm font-medium hover:opacity-90">
               <Plus className="w-4 h-4" /> New Rule
             </button>
           </div>
@@ -1207,7 +1207,7 @@ const RulesTab = () => {
 
         {/* Create / Edit Rule form */}
         {showForm && (
-          <div className="bg-white border border-blue-200 rounded-xl p-6 shadow-sm">
+          <div className="bg-white border border-[#e8622b]/30 rounded-xl p-6 shadow-sm">
             <h3 className="font-semibold text-slate-800 mb-4">{editingId ? "Edit Rule" : "Create Rule"}</h3>
             <div className="grid grid-cols-2 gap-4">
               <div><label className="text-xs font-medium text-slate-600">Rule Name</label><input className="mt-1 w-full border border-slate-200 rounded-lg px-3 py-2 text-sm" placeholder="e.g. Orders must have valid customer" value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} /></div>
@@ -1254,7 +1254,7 @@ const RulesTab = () => {
             </div>
             <div className="flex justify-end gap-2 mt-4">
               <button onClick={closeForm} className="px-4 py-2 text-sm text-slate-600 hover:bg-slate-100 rounded-lg">Cancel</button>
-              <button onClick={saveRule} disabled={!form.name || !form.table_id} className="px-4 py-2 bg-blue-600 text-white text-sm rounded-lg font-medium hover:bg-blue-700 disabled:opacity-50">{editingId ? "Update Rule" : "Save Rule"}</button>
+              <button onClick={saveRule} disabled={!form.name || !form.table_id} className="px-4 py-2 bg-[#e8622b] text-white text-sm rounded-lg font-medium hover:opacity-90 disabled:opacity-50">{editingId ? "Update Rule" : "Save Rule"}</button>
             </div>
           </div>
         )}
@@ -1293,7 +1293,7 @@ const RulesTab = () => {
                       <button onClick={() => runRule(rule.id)} disabled={running[rule.id]} className="flex items-center gap-1 px-3 py-1.5 bg-green-50 text-green-700 hover:bg-green-100 rounded-lg text-xs font-medium disabled:opacity-50">
                         {running[rule.id] ? <RefreshCw className="w-3 h-3 animate-spin" /> : <Play className="w-3 h-3" />} Run
                       </button>
-                      <button onClick={() => openEdit(rule)} className="flex items-center gap-1 px-3 py-1.5 bg-blue-50 text-blue-700 hover:bg-blue-100 rounded-lg text-xs font-medium">
+                      <button onClick={() => openEdit(rule)} className="flex items-center gap-1 px-3 py-1.5 bg-[#fdf3ee] text-[#c94d1a] hover:bg-blue-100 rounded-lg text-xs font-medium">
                         <Pencil className="w-3 h-3" /> Edit
                       </button>
                       <button onClick={() => deleteRule(rule.id)} className="p-1.5 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-lg">
@@ -1348,7 +1348,7 @@ const SchedulerTab = () => {
     if (res) setScans(prev => prev.map(s => s.id === scan.id ? res : s));
   };
 
-  const statusColor = { completed: "text-green-600 bg-green-50", failed: "text-red-600 bg-red-50", running: "text-blue-600 bg-blue-50" };
+  const statusColor = { completed: "text-green-600 bg-green-50", failed: "text-red-600 bg-red-50", running: "text-[#e8622b] bg-[#fdf3ee]" };
   const PRESETS = [
     { label: "Every day at 6am",   cron: "0 6 * * *"   },
     { label: "Every 6 hours",      cron: "0 */6 * * *" },
@@ -1365,7 +1365,7 @@ const SchedulerTab = () => {
             <h1 className="text-2xl font-bold text-slate-800">Profiling Scheduler</h1>
             <p className="text-slate-500 text-sm mt-1">Automatically re-profile tables and run DQ rules on a cron schedule</p>
           </div>
-          <button onClick={() => setShowNew(true)} className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700">
+          <button onClick={() => setShowNew(true)} className="flex items-center gap-2 px-4 py-2 bg-[#e8622b] text-white rounded-lg text-sm font-medium hover:opacity-90">
             <Plus className="w-4 h-4" /> New Schedule
           </button>
         </div>
@@ -1386,7 +1386,7 @@ const SchedulerTab = () => {
             </div>
             <div className="flex justify-end gap-2 mt-4">
               <button onClick={() => setShowNew(false)} className="px-4 py-2 text-sm text-slate-600 hover:bg-slate-100 rounded-lg">Cancel</button>
-              <button onClick={saveScan} disabled={!form.name} className="px-4 py-2 bg-blue-600 text-white text-sm rounded-lg font-medium hover:bg-blue-700 disabled:opacity-50">Save Schedule</button>
+              <button onClick={saveScan} disabled={!form.name} className="px-4 py-2 bg-[#e8622b] text-white text-sm rounded-lg font-medium hover:opacity-90 disabled:opacity-50">Save Schedule</button>
             </div>
           </div>
         )}
@@ -1417,7 +1417,7 @@ const SchedulerTab = () => {
                   </div>
                 </div>
                 <div className="flex items-center gap-2 flex-shrink-0">
-                  <button onClick={() => runNow(scan.id)} disabled={running[scan.id]} className="flex items-center gap-1 px-3 py-1.5 bg-blue-50 text-blue-700 hover:bg-blue-100 rounded-lg text-xs font-medium disabled:opacity-50">
+                  <button onClick={() => runNow(scan.id)} disabled={running[scan.id]} className="flex items-center gap-1 px-3 py-1.5 bg-[#fdf3ee] text-[#c94d1a] hover:bg-blue-100 rounded-lg text-xs font-medium disabled:opacity-50">
                     {running[scan.id] ? <RefreshCw className="w-3 h-3 animate-spin" /> : <Play className="w-3 h-3" />} Run Now
                   </button>
                   <button onClick={() => toggleScan(scan)} className={`px-3 py-1.5 rounded-lg text-xs font-medium ${scan.is_active ? "bg-slate-100 text-slate-600 hover:bg-slate-200" : "bg-green-50 text-green-700 hover:bg-green-100"}`}>
@@ -1654,7 +1654,7 @@ function DataIQApp({ authUser, handleLogout }) {
     <div className={`${sidebarCollapsed ? "w-16" : "w-60"} bg-[#0F1F3D] text-white flex flex-col transition-all duration-200 flex-shrink-0`}>
       {/* Logo */}
       <div className={`flex items-center ${sidebarCollapsed ? "justify-center p-3" : "gap-3 p-4"} border-b border-white/10`}>
-        <div className="w-8 h-8 bg-blue-500 rounded-lg flex items-center justify-center flex-shrink-0">
+        <div className="w-8 h-8 bg-[#fdf3ee]0 rounded-lg flex items-center justify-center flex-shrink-0">
           <Database className="w-5 h-5 text-white" />
         </div>
         {!sidebarCollapsed && (
@@ -1687,7 +1687,7 @@ function DataIQApp({ authUser, handleLogout }) {
             onClick={() => setActiveTab(id)}
             className={`w-full flex items-center ${sidebarCollapsed ? "justify-center" : "gap-3"} px-3 py-2.5 rounded-lg text-left transition-colors group relative ${
               activeTab === id
-                ? "bg-blue-600 text-white"
+                ? "bg-[#e8622b] text-white"
                 : "text-slate-400 hover:bg-white/10 hover:text-white"
             }`}
             title={sidebarCollapsed ? label : undefined}
@@ -1710,7 +1710,7 @@ function DataIQApp({ authUser, handleLogout }) {
         </div>
       )}
       <div className={`border-t border-white/10 p-3 flex items-center ${sidebarCollapsed ? "justify-center" : "gap-2"}`}>
-        <div className="w-7 h-7 rounded-full bg-blue-500 flex items-center justify-center text-white text-xs font-bold flex-shrink-0">MA</div>
+        <div className="w-7 h-7 rounded-full bg-[#fdf3ee]0 flex items-center justify-center text-white text-xs font-bold flex-shrink-0">MA</div>
         {!sidebarCollapsed && (
           <div className="flex-1 min-w-0">
             <div className="text-xs font-medium text-white truncate">Milan</div>
@@ -1739,11 +1739,11 @@ function DataIQApp({ authUser, handleLogout }) {
           <button onClick={() => setSidebarCollapsed(c => !c)} className="p-1 hover:bg-slate-100 rounded mr-2">
             <svg className="w-5 h-5" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M3 5h14a1 1 0 010 2H3a1 1 0 010-2zm0 4h14a1 1 0 010 2H3a1 1 0 010-2zm0 4h14a1 1 0 010 2H3a1 1 0 010-2z" clipRule="evenodd" /></svg>
           </button>
-          <Globe className="w-4 h-4 text-blue-600" />
+          <Globe className="w-4 h-4 text-[#e8622b]" />
           <span className="text-slate-400">/</span>
           <span className="text-slate-700 font-medium">{labels[activeTab] || activeTab}</span>
           {selectedTable && activeTab === "catalog" && (
-            <><span className="text-slate-400">/</span><span className="text-blue-600 font-medium">{selectedTable.name}</span></>
+            <><span className="text-slate-400">/</span><span className="text-[#e8622b] font-medium">{selectedTable.name}</span></>
           )}
         </div>
         <div className="flex items-center gap-3">
@@ -1751,7 +1751,7 @@ function DataIQApp({ authUser, handleLogout }) {
             <Search className="w-4 h-4 absolute left-3 top-2.5 text-slate-400" />
             <input
               type="text" placeholder="Search data assets, tables, columns…"
-              className="pl-9 pr-4 py-2 w-64 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="pl-9 pr-4 py-2 w-64 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#e8622b]"
               value={searchQuery}
               onChange={e => setSearchQuery(e.target.value)}
             />
@@ -1781,9 +1781,9 @@ function DataIQApp({ authUser, handleLogout }) {
           {/* User avatar + logout */}
           <div className="flex items-center gap-2">
             {authUser?.picture ? (
-              <img src={authUser.picture} alt={authUser.name} className="w-8 h-8 rounded-full border-2 border-blue-200" />
+              <img src={authUser.picture} alt={authUser.name} className="w-8 h-8 rounded-full border-2 border-[#e8622b]/30" />
             ) : (
-              <div className="w-8 h-8 rounded-full bg-blue-500 flex items-center justify-center text-white text-xs font-bold">
+              <div className="w-8 h-8 rounded-full bg-[#fdf3ee]0 flex items-center justify-center text-white text-xs font-bold">
                 {authUser?.name ? authUser.name[0].toUpperCase() : "U"}
               </div>
             )}
@@ -1810,7 +1810,7 @@ function DataIQApp({ authUser, handleLogout }) {
             <h2 className="text-xl font-bold text-slate-900">Enterprise Data Intelligence</h2>
             <p className="text-sm text-slate-500 mt-0.5">Real-time health across {realConnections.filter(c => c.status === "ok").length} connected systems · {catalogTables.length} catalogued tables</p>
           </div>
-          <button className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-700 shadow-sm">
+          <button className="flex items-center gap-2 px-4 py-2 bg-[#e8622b] text-white text-sm rounded-lg hover:opacity-90 shadow-sm">
             <RefreshCw className="w-4 h-4" /> Refresh All
           </button>
         </div>
@@ -1819,7 +1819,7 @@ function DataIQApp({ authUser, handleLogout }) {
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
           {[
             { label: "Avg Quality Score", value: `${avgQuality}%`, sub: "+2.1% from last week", icon: Target, color: "text-emerald-600", bg: "bg-emerald-50", border: "border-emerald-200", trend: "up" },
-            { label: "Active Data Sources", value: realConnections.filter(c => c.status === "ok").length, sub: `${realConnections.length} total connections`, icon: Database, color: "text-blue-600", bg: "bg-blue-50", border: "border-blue-200", trend: "flat" },
+            { label: "Active Data Sources", value: realConnections.filter(c => c.status === "ok").length, sub: `${realConnections.length} total connections`, icon: Database, color: "text-[#e8622b]", bg: "bg-[#fdf3ee]", border: "border-[#e8622b]/30", trend: "flat" },
             { label: "Open Issues", value: totalIssues, sub: `${highIssues} high severity`, icon: AlertTriangle, color: "text-red-600", bg: "bg-red-50", border: "border-red-200", trend: "down" },
             { label: "AI Agents Active", value: `${activeAgents}/${mockAgents.length}`, sub: "All agents healthy", icon: Bot, color: "text-purple-600", bg: "bg-purple-50", border: "border-purple-200", trend: "flat" },
           ].map(({ label, value, sub, icon: Icon, color, bg, border, trend }) => (
@@ -1841,13 +1841,13 @@ function DataIQApp({ authUser, handleLogout }) {
           <div className="lg:col-span-2 bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
             <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between">
               <h3 className="font-semibold text-slate-800 text-sm">Most Accessed Data Assets</h3>
-              <button onClick={() => setActiveTab("catalog")} className="text-xs text-blue-600 hover:underline">View catalog →</button>
+              <button onClick={() => setActiveTab("catalog")} className="text-xs text-[#e8622b] hover:underline">View catalog →</button>
             </div>
             <div className="divide-y divide-slate-50">
               {catalogTables.slice(0, 6).map(t => (
                 <div key={t.id} className="px-5 py-3.5 hover:bg-slate-50 cursor-pointer flex items-center gap-4" onClick={() => openTableDetail(t)}>
-                  <div className="w-8 h-8 rounded-lg bg-blue-50 flex items-center justify-center flex-shrink-0">
-                    <Table className="w-4 h-4 text-blue-600" />
+                  <div className="w-8 h-8 rounded-lg bg-[#fdf3ee] flex items-center justify-center flex-shrink-0">
+                    <Table className="w-4 h-4 text-[#e8622b]" />
                   </div>
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2">
@@ -1859,7 +1859,7 @@ function DataIQApp({ authUser, handleLogout }) {
                   <div className="w-24 flex-shrink-0">
                     <QualityBar score={t.quality} />
                   </div>
-                  <button onClick={e => { e.stopPropagation(); openLineage(t.id); }} className="text-slate-400 hover:text-blue-600 flex-shrink-0" title="View lineage">
+                  <button onClick={e => { e.stopPropagation(); openLineage(t.id); }} className="text-slate-400 hover:text-[#e8622b] flex-shrink-0" title="View lineage">
                     <Network className="w-4 h-4" />
                   </button>
                 </div>
@@ -1884,7 +1884,7 @@ function DataIQApp({ authUser, handleLogout }) {
                     {log.level === "error" ? "✗" : log.level === "warn" ? "⚠" : "✓"}
                   </span>
                   <div>
-                    <span className="text-blue-600">[{log.agent}]</span>{" "}
+                    <span className="text-[#e8622b]">[{log.agent}]</span>{" "}
                     <span className="text-slate-700">{log.message}</span>
                   </div>
                 </div>
@@ -1898,14 +1898,14 @@ function DataIQApp({ authUser, handleLogout }) {
         <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
           <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between">
             <h3 className="font-semibold text-slate-800 text-sm">Active Issues</h3>
-            <button onClick={() => setActiveTab("quality")} className="text-xs text-blue-600 hover:underline">View all →</button>
+            <button onClick={() => setActiveTab("quality")} className="text-xs text-[#e8622b] hover:underline">View all →</button>
           </div>
           <div className="divide-y divide-slate-50">
             {catalogIssues.map(issue => (
               <div key={issue.id} className="px-5 py-3 flex items-center gap-4 hover:bg-slate-50">
                 <SeverityBadge severity={issue.severity} />
                 <span className="text-sm font-medium text-slate-700 w-40 flex-shrink-0">{issue.type}</span>
-                <code className="text-xs bg-slate-100 px-2 py-0.5 rounded text-blue-700 cursor-pointer hover:bg-blue-50" onClick={() => { const t = catalogTables.find(t => t.id === issue.tableId); if (t) openTableDetail(t); }}>{issue.table}</code>
+                <code className="text-xs bg-slate-100 px-2 py-0.5 rounded text-[#c94d1a] cursor-pointer hover:bg-[#fdf3ee]" onClick={() => { const t = catalogTables.find(t => t.id === issue.tableId); if (t) openTableDetail(t); }}>{issue.table}</code>
                 <span className="text-xs text-slate-500 flex-1">{issue.description}</span>
                 <span className="text-xs text-slate-400 flex-shrink-0">{issue.detectedAt}</span>
               </div>
@@ -1925,20 +1925,20 @@ function DataIQApp({ authUser, handleLogout }) {
           <div className="relative flex-1 min-w-64">
             <Search className="w-4 h-4 absolute left-3 top-2.5 text-slate-400" />
             <input type="text" placeholder="Search tables, columns, descriptions, tags…"
-              className="w-full pl-9 pr-4 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+              className="w-full pl-9 pr-4 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#e8622b] bg-white"
               value={searchQuery} onChange={e => setSearchQuery(e.target.value)} autoFocus={searchFocused} />
           </div>
-          <select value={filterDomain} onChange={e => setFilterDomain(e.target.value)} className="px-3 py-2 text-sm border border-slate-200 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-blue-500">
+          <select value={filterDomain} onChange={e => setFilterDomain(e.target.value)} className="px-3 py-2 text-sm border border-slate-200 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-[#e8622b]">
             <option value="All">All Domains</option>
             {[...new Set(catalogTables.map(t => t.domain).filter(Boolean))].sort().map(d => <option key={d}>{d}</option>)}
           </select>
-          <select value={filterTrust} onChange={e => setFilterTrust(e.target.value)} className="px-3 py-2 text-sm border border-slate-200 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-blue-500">
+          <select value={filterTrust} onChange={e => setFilterTrust(e.target.value)} className="px-3 py-2 text-sm border border-slate-200 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-[#e8622b]">
             <option value="All">All Trust</option>
             <option value="Gold">Gold</option>
             <option value="Silver">Silver</option>
             <option value="Bronze">Bronze</option>
           </select>
-          <select value={filterConn} onChange={e => setFilterConn(e.target.value)} className="px-3 py-2 text-sm border border-slate-200 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-blue-500">
+          <select value={filterConn} onChange={e => setFilterConn(e.target.value)} className="px-3 py-2 text-sm border border-slate-200 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-[#e8622b]">
             <option value="All">All Sources</option>
             {realConnections.map(c => <option key={c.id}>{c.name}</option>)}
           </select>
@@ -1951,11 +1951,11 @@ function DataIQApp({ authUser, handleLogout }) {
             {filteredTables.map(t => (
               <div key={t.id}
                 onClick={() => setSelectedTable(t)}
-                className={`bg-white rounded-xl border shadow-sm cursor-pointer hover:shadow-md transition-all ${selectedTable?.id === t.id ? "border-blue-500 ring-2 ring-blue-100" : "border-slate-200 hover:border-blue-200"}`}>
+                className={`bg-white rounded-xl border shadow-sm cursor-pointer hover:shadow-md transition-all ${selectedTable?.id === t.id ? "border-blue-500 ring-2 ring-blue-100" : "border-slate-200 hover:border-[#e8622b]/30"}`}>
                 <div className="p-4">
                   <div className="flex items-start gap-3">
-                    <div className="w-9 h-9 rounded-lg bg-blue-50 flex items-center justify-center flex-shrink-0 mt-0.5">
-                      <Table className="w-4.5 h-4.5 text-blue-600" />
+                    <div className="w-9 h-9 rounded-lg bg-[#fdf3ee] flex items-center justify-center flex-shrink-0 mt-0.5">
+                      <Table className="w-4.5 h-4.5 text-[#e8622b]" />
                     </div>
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 flex-wrap">
@@ -1986,7 +1986,7 @@ function DataIQApp({ authUser, handleLogout }) {
                 <div className="flex items-start justify-between">
                   <div className="flex items-start gap-4">
                     <div className="w-12 h-12 rounded-xl bg-blue-100 flex items-center justify-center">
-                      <Table className="w-6 h-6 text-blue-600" />
+                      <Table className="w-6 h-6 text-[#e8622b]" />
                     </div>
                     <div>
                       <div className="flex items-center gap-2 flex-wrap">
@@ -1997,7 +1997,7 @@ function DataIQApp({ authUser, handleLogout }) {
                         {selectedTable.connection} · <code className="bg-slate-100 text-slate-700 px-1 py-0.5 rounded text-xs">{selectedTable.schema}.{selectedTable.name}</code>
                       </div>
                       <div className="flex flex-wrap gap-1.5 mt-2">
-                        {selectedTable.tags.map(tag => <span key={tag} className="text-xs bg-blue-50 text-blue-700 border border-blue-200 px-2 py-0.5 rounded-full">{tag}</span>)}
+                        {selectedTable.tags.map(tag => <span key={tag} className="text-xs bg-[#fdf3ee] text-[#c94d1a] border border-[#e8622b]/30 px-2 py-0.5 rounded-full">{tag}</span>)}
                       </div>
                     </div>
                   </div>
@@ -2064,7 +2064,7 @@ function DataIQApp({ authUser, handleLogout }) {
                 <div>
                   <div className="flex items-center justify-between mb-2">
                     <h4 className="text-sm font-semibold text-slate-700">Lineage Preview</h4>
-                    <button onClick={() => openLineage(selectedTable.id)} className="text-xs text-blue-600 hover:underline">Open full lineage →</button>
+                    <button onClick={() => openLineage(selectedTable.id)} className="text-xs text-[#e8622b] hover:underline">Open full lineage →</button>
                   </div>
                   <div className="h-48 rounded-xl overflow-hidden border border-slate-200">
                     <LineageGraph
@@ -2094,7 +2094,7 @@ function DataIQApp({ authUser, handleLogout }) {
                         <tbody className="divide-y divide-slate-100">
                           {selectedTable.columns_detail.map(col => (
                             <tr key={col.name} className="hover:bg-slate-50">
-                              <td className="px-3 py-2.5"><code className="text-blue-700 font-medium text-xs bg-blue-50 px-1.5 py-0.5 rounded">{col.name}</code></td>
+                              <td className="px-3 py-2.5"><code className="text-[#c94d1a] font-medium text-xs bg-[#fdf3ee] px-1.5 py-0.5 rounded">{col.name}</code></td>
                               <td className="px-3 py-2.5"><span className="text-xs font-mono text-slate-600 bg-slate-100 px-1.5 py-0.5 rounded">{col.type}</span></td>
                               <td className="px-3 py-2.5">{col.nullable ? <span className="text-xs text-slate-400">YES</span> : <span className="text-xs text-slate-700 font-medium">NO</span>}</td>
                               <td className="px-3 py-2.5">{col.pii ? <span className="text-xs bg-red-100 text-red-700 px-1.5 py-0.5 rounded border border-red-200">PII</span> : <span className="text-xs text-slate-400">—</span>}</td>
@@ -2126,7 +2126,7 @@ function DataIQApp({ authUser, handleLogout }) {
             <div className="flex gap-2">
               {["issues", "scores", "rules"].map(s => (
                 <button key={s} onClick={() => setActiveSection(s)}
-                  className={`px-4 py-1.5 text-sm rounded-lg font-medium transition-colors ${activeSection === s ? "bg-blue-600 text-white" : "bg-white border border-slate-200 text-slate-600 hover:bg-slate-50"}`}>
+                  className={`px-4 py-1.5 text-sm rounded-lg font-medium transition-colors ${activeSection === s ? "bg-[#e8622b] text-white" : "bg-white border border-slate-200 text-slate-600 hover:bg-slate-50"}`}>
                   {s.charAt(0).toUpperCase() + s.slice(1)}
                 </button>
               ))}
@@ -2139,7 +2139,7 @@ function DataIQApp({ authUser, handleLogout }) {
                 {[
                   { label: "High Severity", count: highIssues, color: "text-red-700 bg-red-50 border-red-200" },
                   { label: "Medium Severity", count: catalogIssues.filter(i => i.severity === "medium").length, color: "text-yellow-700 bg-yellow-50 border-yellow-200" },
-                  { label: "Low Severity", count: catalogIssues.filter(i => i.severity === "low").length, color: "text-blue-700 bg-blue-50 border-blue-200" },
+                  { label: "Low Severity", count: catalogIssues.filter(i => i.severity === "low").length, color: "text-[#c94d1a] bg-[#fdf3ee] border-[#e8622b]/30" },
                 ].map(({ label, count, color }) => (
                   <div key={label} className={`rounded-xl border p-4 ${color}`}>
                     <div className="text-3xl font-bold">{count}</div>
@@ -2160,7 +2160,7 @@ function DataIQApp({ authUser, handleLogout }) {
                           <div className="flex items-center gap-2">
                             <span className="font-semibold text-slate-800 text-sm">{issue.type}</span>
                             <span className="text-xs text-slate-500">in</span>
-                            <code className="text-xs bg-blue-50 text-blue-700 px-2 py-0.5 rounded cursor-pointer hover:bg-blue-100"
+                            <code className="text-xs bg-[#fdf3ee] text-[#c94d1a] px-2 py-0.5 rounded cursor-pointer hover:bg-blue-100"
                               onClick={() => { const t = catalogTables.find(t => t.id === issue.tableId); if (t) openTableDetail(t); }}>
                               {issue.table}
                             </code>
@@ -2210,7 +2210,7 @@ function DataIQApp({ authUser, handleLogout }) {
             <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
               <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between">
                 <h3 className="font-semibold text-slate-800 text-sm">Validation Rules</h3>
-                <button className="flex items-center gap-1.5 px-3 py-1.5 text-xs bg-blue-600 text-white rounded-lg hover:bg-blue-700">
+                <button className="flex items-center gap-1.5 px-3 py-1.5 text-xs bg-[#e8622b] text-white rounded-lg hover:opacity-90">
                   <Plus className="w-3.5 h-3.5" /> Add Rule
                 </button>
               </div>
@@ -2257,8 +2257,8 @@ function DataIQApp({ authUser, handleLogout }) {
         <div className="bg-white border-b border-slate-200 px-5 py-3 flex items-center gap-4 flex-shrink-0">
           <div className="flex items-center gap-2">
             <span className="text-sm font-semibold text-slate-700">Viewing lineage for:</span>
-            <div className="flex items-center gap-1.5 bg-blue-50 border border-blue-200 rounded-lg px-3 py-1.5">
-              <Table className="w-4 h-4 text-blue-600" />
+            <div className="flex items-center gap-1.5 bg-[#fdf3ee] border border-[#e8622b]/30 rounded-lg px-3 py-1.5">
+              <Table className="w-4 h-4 text-[#e8622b]" />
               <code className="text-sm font-bold text-blue-900">{currentTable?.name || lineageTableId}</code>
               {currentTable && <TrustBadge trust={currentTable.trust} />}
             </div>
@@ -2272,7 +2272,7 @@ function DataIQApp({ authUser, handleLogout }) {
           <select
             value={lineageTableId}
             onChange={e => setLineageTableId(e.target.value)}
-            className="px-3 py-1.5 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+            className="px-3 py-1.5 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#e8622b] bg-white"
           >
             {catalogTables.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
           </select>
@@ -2300,7 +2300,7 @@ function DataIQApp({ authUser, handleLogout }) {
                 const layerLabel = n.layer === 0 ? "Selected" : n.layer < 0 ? `Upstream L${Math.abs(n.layer)}` : `Downstream L${n.layer}`;
                 return (
                   <div key={n.id} onClick={() => setLineageTableId(n.id)}
-                    className={`px-3 py-2.5 cursor-pointer hover:bg-slate-50 ${n.isRoot ? "bg-blue-50" : ""}`}>
+                    className={`px-3 py-2.5 cursor-pointer hover:bg-slate-50 ${n.isRoot ? "bg-[#fdf3ee]" : ""}`}>
                     <div className="flex items-center gap-2">
                       <Table className="w-3.5 h-3.5 text-slate-400 flex-shrink-0" />
                       <div className="flex-1 min-w-0">
@@ -2332,7 +2332,7 @@ function DataIQApp({ authUser, handleLogout }) {
               <span className="font-medium text-slate-700">{currentTable.domain}</span>
             </div>
             <div className="flex-1" />
-            <button onClick={() => openTableDetail(currentTable)} className="flex items-center gap-1.5 text-xs text-blue-600 hover:underline">
+            <button onClick={() => openTableDetail(currentTable)} className="flex items-center gap-1.5 text-xs text-[#e8622b] hover:underline">
               <ExternalLink className="w-3.5 h-3.5" /> Open in Catalog
             </button>
           </div>
@@ -2370,11 +2370,11 @@ function DataIQApp({ authUser, handleLogout }) {
           </div>
 
           {!backendOnline && (
-            <div className="bg-blue-50 border border-blue-200 rounded-xl px-5 py-4 flex items-start gap-3">
-              <Bot className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" />
+            <div className="bg-[#fdf3ee] border border-[#e8622b]/30 rounded-xl px-5 py-4 flex items-start gap-3">
+              <Bot className="w-5 h-5 text-[#e8622b] flex-shrink-0 mt-0.5" />
               <div>
                 <div className="text-sm font-semibold text-blue-900">Start the backend to activate real agents</div>
-                <div className="text-xs text-blue-700 mt-1">Open a Terminal in <code className="bg-blue-100 px-1 py-0.5 rounded">Data Quality App/backend/</code> and double-click <strong>Start Backend.command</strong>. Agents will connect automatically.</div>
+                <div className="text-xs text-[#c94d1a] mt-1">Open a Terminal in <code className="bg-blue-100 px-1 py-0.5 rounded">Data Quality App/backend/</code> and double-click <strong>Start Backend.command</strong>. Agents will connect automatically.</div>
               </div>
             </div>
           )}
@@ -2463,7 +2463,7 @@ function DataIQApp({ authUser, handleLogout }) {
                   <span className={`flex-shrink-0 font-bold ${log.level === "error" ? "text-red-500" : log.level === "warn" ? "text-yellow-500" : "text-emerald-500"}`}>
                     [{(log.level || "info").toUpperCase()}]
                   </span>
-                  <span className="text-blue-600 flex-shrink-0">[{log.agent}]</span>
+                  <span className="text-[#e8622b] flex-shrink-0">[{log.agent}]</span>
                   <span className="text-slate-700">{log.message}</span>
                 </div>
               ))}
@@ -2518,7 +2518,7 @@ function DataIQApp({ authUser, handleLogout }) {
       await apiFetch(`/tasks/${taskId}`, { method: "DELETE" });
     };
 
-    const statusColor = { pending: "text-slate-500 bg-slate-100 border-slate-200", in_progress: "text-blue-700 bg-blue-50 border-blue-200", completed: "text-emerald-700 bg-emerald-50 border-emerald-200", failed: "text-red-700 bg-red-50 border-red-200" };
+    const statusColor = { pending: "text-slate-500 bg-slate-100 border-slate-200", in_progress: "text-[#c94d1a] bg-[#fdf3ee] border-[#e8622b]/30", completed: "text-emerald-700 bg-emerald-50 border-emerald-200", failed: "text-red-700 bg-red-50 border-red-200" };
     const priorityColor = { high: "text-red-600", medium: "text-yellow-600", low: "text-slate-400" };
     const counts = { all: allTasks.length, pending: allTasks.filter(t => t.status === "pending").length, in_progress: allTasks.filter(t => t.status === "in_progress").length, completed: allTasks.filter(t => t.status === "completed").length };
 
@@ -2541,7 +2541,7 @@ function DataIQApp({ authUser, handleLogout }) {
                 <input
                   type="text"
                   placeholder="Task title — e.g. Profile customer_master, Validate orders_fact…"
-                  className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#e8622b]"
                   value={newTask.title}
                   onChange={e => setNewTask(n => ({ ...n, title: e.target.value }))}
                   onKeyDown={e => e.key === "Enter" && backendOnline && submitTask()}
@@ -2549,14 +2549,14 @@ function DataIQApp({ authUser, handleLogout }) {
               </div>
               <div>
                 <label className="text-xs font-medium text-slate-500 block mb-1">Assign to Agent</label>
-                <select className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+                <select className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#e8622b] bg-white"
                   value={newTask.agentId} onChange={e => setNewTask(n => ({ ...n, agentId: e.target.value }))}>
                   {AGENT_OPTIONS.map(a => <option key={a.id} value={a.id}>{a.label}</option>)}
                 </select>
               </div>
               <div>
                 <label className="text-xs font-medium text-slate-500 block mb-1">Target Table (optional)</label>
-                <select className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+                <select className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#e8622b] bg-white"
                   value={newTask.tableId} onChange={e => setNewTask(n => ({ ...n, tableId: e.target.value }))}>
                   <option value="">— No specific table —</option>
                   {catalogTables.map(t => <option key={t.id} value={t.id}>{t.name} ({t.schema})</option>)}
@@ -2564,7 +2564,7 @@ function DataIQApp({ authUser, handleLogout }) {
               </div>
               <div>
                 <label className="text-xs font-medium text-slate-500 block mb-1">Priority</label>
-                <select className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+                <select className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#e8622b] bg-white"
                   value={newTask.priority} onChange={e => setNewTask(n => ({ ...n, priority: e.target.value }))}>
                   <option value="high">High</option>
                   <option value="medium">Medium</option>
@@ -2575,7 +2575,7 @@ function DataIQApp({ authUser, handleLogout }) {
                 <button
                   onClick={submitTask}
                   disabled={!backendOnline || !newTask.title.trim() || submitting}
-                  className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                  className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-[#e8622b] text-white text-sm rounded-lg hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
                 >
                   <Send className="w-4 h-4" />
                   {submitting ? "Submitting…" : "Submit Task"}
@@ -2588,7 +2588,7 @@ function DataIQApp({ authUser, handleLogout }) {
           <div className="flex items-center gap-2">
             {Object.entries(counts).map(([key, count]) => (
               <button key={key} onClick={() => setFilter(key)}
-                className={`px-3 py-1.5 text-xs rounded-lg font-medium transition-colors ${filter === key ? "bg-blue-600 text-white" : "bg-white border border-slate-200 text-slate-600 hover:bg-slate-50"}`}>
+                className={`px-3 py-1.5 text-xs rounded-lg font-medium transition-colors ${filter === key ? "bg-[#e8622b] text-white" : "bg-white border border-slate-200 text-slate-600 hover:bg-slate-50"}`}>
                 {key.replace("_", " ").replace(/\b\w/g, c => c.toUpperCase())} ({count})
               </button>
             ))}
@@ -2665,7 +2665,7 @@ function DataIQApp({ authUser, handleLogout }) {
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
           {[
             { label: "PII Tables", value: catalogTables.filter(t => t.tags.includes("PII")).length, icon: Lock, color: "text-red-600 bg-red-50 border-red-200" },
-            { label: "Active Policies", value: mockPolicies.filter(p => p.status === "active").length, icon: Shield, color: "text-blue-600 bg-blue-50 border-blue-200" },
+            { label: "Active Policies", value: mockPolicies.filter(p => p.status === "active").length, icon: Shield, color: "text-[#e8622b] bg-[#fdf3ee] border-[#e8622b]/30" },
             { label: "Data Stewards", value: [...new Set(catalogTables.map(t => t.steward))].length, icon: Users, color: "text-purple-600 bg-purple-50 border-purple-200" },
             { label: "Compliance Domains", value: 4, icon: Globe, color: "text-teal-600 bg-teal-50 border-teal-200" },
           ].map(({ label, value, icon: Icon, color }) => (
@@ -2684,7 +2684,7 @@ function DataIQApp({ authUser, handleLogout }) {
           <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
             <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between">
               <h3 className="font-semibold text-slate-800 text-sm">Data Policies</h3>
-              <button className="flex items-center gap-1 px-3 py-1.5 text-xs bg-blue-600 text-white rounded-lg hover:bg-blue-700"><Plus className="w-3.5 h-3.5" />New Policy</button>
+              <button className="flex items-center gap-1 px-3 py-1.5 text-xs bg-[#e8622b] text-white rounded-lg hover:opacity-90"><Plus className="w-3.5 h-3.5" />New Policy</button>
             </div>
             <div className="divide-y divide-slate-100">
               {mockPolicies.map(p => (
@@ -2816,7 +2816,7 @@ function DataIQApp({ authUser, handleLogout }) {
         <div className="p-5">
           <div className="flex items-start justify-between mb-3">
             <div className="flex items-start gap-3">
-              <div className="w-10 h-10 rounded-xl bg-blue-50 flex items-center justify-center text-xl flex-shrink-0">
+              <div className="w-10 h-10 rounded-xl bg-[#fdf3ee] flex items-center justify-center text-xl flex-shrink-0">
                 {connectorIcons[conn.connector_type] || "🔌"}
               </div>
               <div>
@@ -2919,7 +2919,7 @@ function DataIQApp({ authUser, handleLogout }) {
                       <div className="border-t border-slate-100">
                         {tables.filter(t => t.schema_name === schema).map(tbl => (
                           <div key={tbl.id}
-                            className="flex items-center justify-between px-3 py-2 text-xs hover:bg-blue-50 group border-t border-slate-50 first:border-0">
+                            className="flex items-center justify-between px-3 py-2 text-xs hover:bg-[#fdf3ee] group border-t border-slate-50 first:border-0">
                             <div className="flex items-center gap-2 min-w-0">
                               <Table className="w-3 h-3 text-slate-400 flex-shrink-0" />
                               <span className="font-mono text-slate-700 truncate">{tbl.table_name}</span>
@@ -2936,7 +2936,7 @@ function DataIQApp({ authUser, handleLogout }) {
                               <button
                                 onClick={() => handleProfileTable(schema, tbl.table_name)}
                                 disabled={profilingTable === `${schema}.${tbl.table_name}`}
-                                className="opacity-0 group-hover:opacity-100 px-2 py-1 bg-blue-600 text-white rounded text-xs hover:bg-blue-700 disabled:opacity-50 flex items-center gap-1">
+                                className="opacity-0 group-hover:opacity-100 px-2 py-1 bg-[#e8622b] text-white rounded text-xs hover:opacity-90 disabled:opacity-50 flex items-center gap-1">
                                 {profilingTable === `${schema}.${tbl.table_name}`
                                   ? <RefreshCw className="w-3 h-3 animate-spin" />
                                   : <Zap className="w-3 h-3" />}
@@ -3043,7 +3043,7 @@ function DataIQApp({ authUser, handleLogout }) {
           </div>
           <button
             onClick={() => setShowNewConn(true)}
-            className="flex items-center gap-1.5 px-4 py-2 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-700 shadow-sm font-medium">
+            className="flex items-center gap-1.5 px-4 py-2 bg-[#e8622b] text-white text-sm rounded-lg hover:opacity-90 shadow-sm font-medium">
             <Plus className="w-4 h-4" /> New Connection
           </button>
         </div>
@@ -3068,7 +3068,7 @@ function DataIQApp({ authUser, handleLogout }) {
               Connect your first data warehouse to start profiling, discovering, and monitoring data quality.
             </p>
             <button onClick={() => setShowNewConn(true)}
-              className="px-5 py-2.5 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-700 font-medium">
+              className="px-5 py-2.5 bg-[#e8622b] text-white text-sm rounded-lg hover:opacity-90 font-medium">
               Add your first connection
             </button>
           </div>
@@ -3096,7 +3096,7 @@ function DataIQApp({ authUser, handleLogout }) {
               { icon: "🧱", name: "Databricks", status: "coming-soon" },
             ].map(wh => (
               <div key={wh.name} className={`flex items-center gap-2 px-3 py-2 rounded-lg border text-sm ${
-                wh.status === "available" ? "border-blue-200 bg-blue-50 text-blue-700" : "border-slate-200 bg-slate-50 text-slate-400"
+                wh.status === "available" ? "border-[#e8622b]/30 bg-[#fdf3ee] text-[#c94d1a]" : "border-slate-200 bg-slate-50 text-slate-400"
               }`}>
                 <span>{wh.icon}</span>
                 <span className="font-medium">{wh.name}</span>
