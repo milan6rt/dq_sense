@@ -38,7 +38,8 @@ import {
   ZoomOut, RotateCcw, Info, Settings, Users, Globe, Lock,
   Bookmark, ExternalLink, AlertCircle, TrendingDown, Hash,
   Calendar, Table, Columns, Key, Link, ChevronUp, MoreHorizontal,
-  Check, Circle, ListTodo, Trash2, Send, Wifi, WifiOff, Pencil
+  Check, Circle, ListTodo, Trash2, Send, Wifi, WifiOff, Pencil,
+  Cpu, EyeOff
 } from "lucide-react";
 
 // ─── BACKEND API CONFIG ───────────────────────────────────────────────────────
@@ -323,7 +324,10 @@ function buildLineageGraph(tableId, allTables) {
   return { nodes, edges };
 }
 
-function computeLayout(nodes, edges, width, height) {
+function computeLayout(nodes) {
+  // Fixed sizing constants — consistent with LineageGraph NODE_W/NODE_H
+  const NODE_W = 190, NODE_H = 80, COL_GAP = 110, ROW_GAP = 32;
+
   const layers = {};
   nodes.forEach(n => {
     if (n.type === "etl") return;
@@ -333,25 +337,26 @@ function computeLayout(nodes, edges, width, height) {
   });
 
   const layerKeys = Object.keys(layers).map(Number).sort((a, b) => a - b);
-  const totalLayers = layerKeys.length;
-  const colW = Math.min(220, width / (totalLayers + 1));
   const positions = {};
+  const colStride = NODE_W + COL_GAP;
 
   layerKeys.forEach((lk, li) => {
     const col = layers[lk];
-    const x = 60 + li * colW + colW / 2;
+    const x = 60 + li * colStride + NODE_W / 2;
+    // Total height of this column
+    const totalH = col.length * NODE_H + (col.length - 1) * ROW_GAP;
+    // Start Y so the column is centred around y=0 (we'll auto-fit the viewport)
+    const startY = -totalH / 2 + NODE_H / 2;
     col.forEach((n, ni) => {
-      const rowH = Math.min(120, (height - 80) / Math.max(col.length, 1));
-      const y = 40 + ni * rowH + rowH / 2 + (height - col.length * rowH) / 2;
-      positions[n.id] = { x, y };
+      positions[n.id] = { x, y: startY + ni * (NODE_H + ROW_GAP) };
     });
   });
 
-  // ETL nodes go midpoint
+  // ETL midpoints
   nodes.forEach(n => {
     if (n.type === "etl") {
-      const p1 = positions[n.fromEdge] || { x: width / 2, y: height / 2 };
-      const p2 = positions[n.toEdge] || { x: width / 2, y: height / 2 };
+      const p1 = positions[n.fromEdge] || { x: 0, y: 0 };
+      const p2 = positions[n.toEdge]   || { x: 0, y: 0 };
       positions[n.id] = { x: (p1.x + p2.x) / 2, y: (p1.y + p2.y) / 2 };
     }
   });
@@ -426,15 +431,20 @@ const Avatar = ({ name = '?', size = 7 }) => {
 
 // ─── LINEAGE VISUALIZATION ───────────────────────────────────────────────────
 
+const NODE_W = 190, NODE_H = 80;
+
 const LineageGraph = ({ tableId, allTables, onNodeClick }) => {
-  const svgRef = useRef(null);
   const containerRef = useRef(null);
   const [dims, setDims] = useState({ w: 900, h: 500 });
   const [zoom, setZoom] = useState(1);
   const [pan, setPan] = useState({ x: 0, y: 0 });
   const [dragging, setDragging] = useState(null);
   const [hoveredNode, setHoveredNode] = useState(null);
+  const [highlightedPath, setHighlightedPath] = useState(null); // set of node ids on selected path
+  const dimsRef = useRef(dims);
+  dimsRef.current = dims;
 
+  // Observe container resize
   useEffect(() => {
     const obs = new ResizeObserver(entries => {
       const { width, height } = entries[0].contentRect;
@@ -444,121 +454,243 @@ const LineageGraph = ({ tableId, allTables, onNodeClick }) => {
     return () => obs.disconnect();
   }, []);
 
-  useEffect(() => {
-    setZoom(1);
-    setPan({ x: 0, y: 0 });
-  }, [tableId]);
-
   const { nodes, edges } = buildLineageGraph(tableId, allTables);
   const tableNodes = nodes.filter(n => n.type === "table");
-  const etlNodes = nodes.filter(n => n.type === "etl");
-  const positions = computeLayout(nodes, edges, dims.w - 40, dims.h - 40);
+  const positions = computeLayout(nodes);
 
-  const tableMap = {};
-  allTables.forEach(t => { tableMap[t.id] = t; });
+  // Auto-fit: compute bounding box of all positioned table nodes and center + scale to fill viewport
+  const fitView = useCallback((posMap, d) => {
+    const posArr = tableNodes.map(n => posMap[n.id]).filter(Boolean);
+    if (!posArr.length) return;
+    const xs = posArr.map(p => p.x);
+    const ys = posArr.map(p => p.y);
+    const minX = Math.min(...xs) - NODE_W / 2 - 40;
+    const maxX = Math.max(...xs) + NODE_W / 2 + 40;
+    const minY = Math.min(...ys) - NODE_H / 2 - 40;
+    const maxY = Math.max(...ys) + NODE_H / 2 + 40;
+    const contentW = maxX - minX;
+    const contentH = maxY - minY;
+    const newZoom = Math.min(1.2, Math.min(d.w / contentW, d.h / contentH) * 0.88);
+    const newPanX = d.w / 2 - (minX + contentW / 2) * newZoom;
+    const newPanY = d.h / 2 - (minY + contentH / 2) * newZoom;
+    setZoom(newZoom);
+    setPan({ x: newPanX, y: newPanY });
+  }, [tableNodes]);
 
-  const trustColor = (trust) => {
-    if (trust === "gold") return "#F59E0B";
-    if (trust === "silver") return "#94A3B8";
-    return "#F97316";
+  // Trigger auto-fit when tableId changes or dims settle
+  useEffect(() => {
+    fitView(positions, dimsRef.current);
+    setHighlightedPath(null);
+  }, [tableId]);
+
+  useEffect(() => {
+    fitView(positions, dims);
+  }, [dims.w, dims.h]);
+
+  // Build upstream/downstream path from a node to root and all its parents/children
+  const getPathNodes = (nodeId) => {
+    const pathIds = new Set();
+    const addUpstream = (id) => {
+      pathIds.add(id);
+      edges.filter(e => e.to === id).forEach(e => { if (!pathIds.has(e.from)) addUpstream(e.from); });
+    };
+    const addDownstream = (id) => {
+      pathIds.add(id);
+      edges.filter(e => e.from === id).forEach(e => { if (!pathIds.has(e.to)) addDownstream(e.to); });
+    };
+    addUpstream(nodeId);
+    addDownstream(nodeId);
+    return pathIds;
   };
 
-  const qualityFill = (q) => {
-    if (!q) return "#94A3B8";
-    if (q >= 90) return "#10B981";
-    if (q >= 75) return "#F59E0B";
-    return "#EF4444";
-  };
+  const trustColor = t => t === "gold" ? "#F59E0B" : t === "silver" ? "#94A3B8" : "#F97316";
+  const qualityFill = q => !q ? "#94A3B8" : q >= 90 ? "#10B981" : q >= 75 ? "#F59E0B" : "#EF4444";
 
-  // Drag-to-pan
+  // Drag-to-pan (on SVG background only)
   const handleMouseDown = (e) => {
     if (e.target.closest(".lineage-node")) return;
-    setDragging({ x: e.clientX - pan.x, y: e.clientY - pan.y });
+    e.preventDefault();
+    setDragging({ startX: e.clientX - pan.x, startY: e.clientY - pan.y });
   };
   const handleMouseMove = (e) => {
     if (!dragging) return;
-    setPan({ x: e.clientX - dragging.x, y: e.clientY - dragging.y });
+    setPan({ x: e.clientX - dragging.startX, y: e.clientY - dragging.startY });
   };
   const handleMouseUp = () => setDragging(null);
 
   const handleWheel = (e) => {
     e.preventDefault();
-    setZoom(z => Math.max(0.3, Math.min(2.5, z - e.deltaY * 0.001)));
+    const factor = e.deltaY < 0 ? 1.1 : 0.9;
+    const rect = containerRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    const mx = e.clientX - rect.left;
+    const my = e.clientY - rect.top;
+    setZoom(z => {
+      const newZ = Math.max(0.2, Math.min(3, z * factor));
+      setPan(p => ({
+        x: mx - (mx - p.x) * (newZ / z),
+        y: my - (my - p.y) * (newZ / z),
+      }));
+      return newZ;
+    });
   };
 
-  const resetView = () => { setZoom(1); setPan({ x: 0, y: 0 }); };
+  // Minimap constants
+  const MM_W = 140, MM_H = 90, MM_PAD = 8;
+  const mmPosArr = tableNodes.map(n => positions[n.id]).filter(Boolean);
+  const mmXs = mmPosArr.map(p => p.x);
+  const mmYs = mmPosArr.map(p => p.y);
+  const mmMinX = mmXs.length ? Math.min(...mmXs) - NODE_W / 2 - 10 : 0;
+  const mmMaxX = mmXs.length ? Math.max(...mmXs) + NODE_W / 2 + 10 : 1;
+  const mmMinY = mmYs.length ? Math.min(...mmYs) - NODE_H / 2 - 10 : 0;
+  const mmMaxY = mmYs.length ? Math.max(...mmYs) + NODE_H / 2 + 10 : 1;
+  const mmCW = mmMaxX - mmMinX, mmCH = mmMaxY - mmMinY;
+  const mmScaleX = MM_W / mmCW, mmScaleY = MM_H / mmCH;
 
-  const NODE_W = 160;
-  const NODE_H = 64;
-
-  const edgePath = (from, to, viaEtl) => {
-    const p1 = positions[from];
-    const p2 = positions[to];
-    if (!p1 || !p2) return "";
-    const mx = (p1.x + p2.x) / 2;
-    return `M ${p1.x + NODE_W / 2} ${p1.y} C ${mx} ${p1.y}, ${mx} ${p2.y}, ${p2.x - NODE_W / 2} ${p2.y}`;
-  };
+  // Viewport rectangle in minimap coords
+  const vpLeft   = (-pan.x / zoom - mmMinX) * mmScaleX;
+  const vpTop    = (-pan.y / zoom - mmMinY) * mmScaleY;
+  const vpWidth  = (dims.w / zoom) * mmScaleX;
+  const vpHeight = (dims.h / zoom) * mmScaleY;
 
   return (
-    <div ref={containerRef} className="relative w-full h-full bg-slate-50 rounded-xl overflow-hidden border border-slate-200">
-      {/* Controls */}
-      <div className="absolute top-3 right-3 flex flex-col gap-1.5 z-10">
-        <button onClick={() => setZoom(z => Math.min(2.5, z + 0.15))} className="w-8 h-8 bg-white border border-slate-200 rounded-lg flex items-center justify-center shadow-sm hover:bg-slate-50" title="Zoom in"><ZoomIn className="w-4 h-4 text-slate-600" /></button>
-        <button onClick={() => setZoom(z => Math.max(0.3, z - 0.15))} className="w-8 h-8 bg-white border border-slate-200 rounded-lg flex items-center justify-center shadow-sm hover:bg-slate-50" title="Zoom out"><ZoomOut className="w-4 h-4 text-slate-600" /></button>
-        <button onClick={resetView} className="w-8 h-8 bg-white border border-slate-200 rounded-lg flex items-center justify-center shadow-sm hover:bg-slate-50" title="Reset"><RotateCcw className="w-4 h-4 text-slate-600" /></button>
+    <div ref={containerRef} className="relative w-full h-full bg-slate-50 rounded-xl overflow-hidden border border-slate-200" style={{ minHeight: 420 }}>
+
+      {/* Toolbar */}
+      <div className="absolute top-3 right-3 flex flex-col gap-1 z-20">
+        <button onClick={() => setZoom(z => Math.min(3, z * 1.2))}
+          className="w-8 h-8 bg-white border border-slate-200 rounded-lg flex items-center justify-center shadow-sm hover:bg-slate-50 transition-colors" title="Zoom in">
+          <ZoomIn className="w-4 h-4 text-slate-600" />
+        </button>
+        <button onClick={() => setZoom(z => Math.max(0.2, z / 1.2))}
+          className="w-8 h-8 bg-white border border-slate-200 rounded-lg flex items-center justify-center shadow-sm hover:bg-slate-50 transition-colors" title="Zoom out">
+          <ZoomOut className="w-4 h-4 text-slate-600" />
+        </button>
+        <button onClick={() => fitView(positions, dims)}
+          className="w-8 h-8 bg-white border border-slate-200 rounded-lg flex items-center justify-center shadow-sm hover:bg-slate-50 transition-colors" title="Fit to screen">
+          <Maximize2 className="w-4 h-4 text-slate-600" />
+        </button>
+        <button onClick={() => { fitView(positions, dims); setHighlightedPath(null); }}
+          className="w-8 h-8 bg-white border border-slate-200 rounded-lg flex items-center justify-center shadow-sm hover:bg-slate-50 transition-colors" title="Reset">
+          <RotateCcw className="w-4 h-4 text-slate-600" />
+        </button>
+        {/* Zoom % */}
+        <div className="w-8 text-center text-[10px] font-semibold text-slate-400 pt-0.5 select-none">
+          {Math.round(zoom * 100)}%
+        </div>
+      </div>
+
+      {/* Layer swim-lane labels */}
+      <div className="absolute top-3 left-3 z-20 flex gap-1.5">
+        <span className="bg-slate-600/75 text-white text-xs px-2 py-0.5 rounded-full backdrop-blur-sm">← Upstream</span>
+        <span className="bg-[#e8622b]/80 text-white text-xs px-2 py-0.5 rounded-full backdrop-blur-sm">Selected</span>
+        <span className="bg-slate-600/75 text-white text-xs px-2 py-0.5 rounded-full backdrop-blur-sm">Downstream →</span>
+        {highlightedPath && (
+          <button onClick={() => setHighlightedPath(null)}
+            className="bg-white border border-slate-200 text-slate-600 text-xs px-2 py-0.5 rounded-full shadow-sm hover:bg-slate-50">
+            ✕ Clear path
+          </button>
+        )}
       </div>
 
       {/* Legend */}
-      <div className="absolute bottom-3 left-3 flex gap-3 z-10 bg-white/90 px-3 py-2 rounded-lg border border-slate-200 text-xs text-slate-600">
-        <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full bg-emerald-500 inline-block" />Quality ≥90%</span>
+      <div className="absolute bottom-3 left-3 flex gap-2.5 z-20 bg-white/90 backdrop-blur-sm px-3 py-1.5 rounded-lg border border-slate-200 text-xs text-slate-600 shadow-sm">
+        <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full bg-emerald-500 inline-block" />≥90%</span>
         <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full bg-yellow-400 inline-block" />75–89%</span>
         <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full bg-red-400 inline-block" />&lt;75%</span>
-        <span className="flex items-center gap-1"><span className="w-3 h-0.5 bg-slate-400 inline-block border-dashed border-t border-slate-400" />ETL Transform</span>
+        <span className="flex items-center gap-1 text-slate-400">Scroll to zoom · Drag to pan · Click node for path</span>
       </div>
 
-      {/* Layer labels */}
-      <div className="absolute top-3 left-3 z-10 flex gap-2">
-        <span className="bg-slate-700/80 text-white text-xs px-2 py-0.5 rounded">← Upstream Sources</span>
-        <span className="bg-[#e8622b]/80 text-white text-xs px-2 py-0.5 rounded">Selected</span>
-        <span className="bg-slate-700/80 text-white text-xs px-2 py-0.5 rounded">Downstream →</span>
-      </div>
+      {/* Minimap */}
+      {mmPosArr.length > 0 && (
+        <div className="absolute bottom-3 right-3 z-20 bg-white/90 backdrop-blur-sm rounded-lg border border-slate-200 shadow-sm overflow-hidden" style={{ width: MM_W + MM_PAD * 2, height: MM_H + MM_PAD * 2 }}>
+          <svg width={MM_W + MM_PAD * 2} height={MM_H + MM_PAD * 2}>
+            <g transform={`translate(${MM_PAD},${MM_PAD})`}>
+              {/* Mini nodes */}
+              {tableNodes.map(n => {
+                const p = positions[n.id];
+                if (!p) return null;
+                const mx = (p.x - mmMinX) * mmScaleX;
+                const my = (p.y - mmMinY) * mmScaleY;
+                const mw = NODE_W * mmScaleX, mh = NODE_H * mmScaleY;
+                const isRoot = n.isRoot;
+                const dimmed = highlightedPath && !highlightedPath.has(n.id);
+                return (
+                  <rect key={n.id}
+                    x={mx - mw / 2} y={my - mh / 2} width={mw} height={mh} rx="2"
+                    fill={isRoot ? "#1E40AF" : qualityFill(n.quality)}
+                    opacity={dimmed ? 0.2 : 0.7}
+                  />
+                );
+              })}
+              {/* Viewport indicator */}
+              <rect x={vpLeft} y={vpTop} width={Math.min(vpWidth, MM_W)} height={Math.min(vpHeight, MM_H)}
+                fill="rgba(59,130,246,0.08)" stroke="#3B82F6" strokeWidth="1" rx="2" />
+            </g>
+          </svg>
+        </div>
+      )}
 
+      {/* Empty state */}
+      {tableNodes.length === 0 && (
+        <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 text-slate-400">
+          <GitBranch className="w-12 h-12 opacity-30" />
+          <p className="text-sm font-medium">No lineage data for this table</p>
+          <p className="text-xs">Connect a database and run profiling to generate lineage</p>
+        </div>
+      )}
+
+      {/* Main SVG canvas */}
       <svg
-        ref={svgRef}
         width="100%" height="100%"
-        className={dragging ? "cursor-grabbing" : "cursor-grab"}
+        className={dragging ? "cursor-grabbing select-none" : "cursor-grab"}
         onMouseDown={handleMouseDown}
         onMouseMove={handleMouseMove}
         onMouseUp={handleMouseUp}
         onMouseLeave={handleMouseUp}
         onWheel={handleWheel}
+        style={{ display: 'block' }}
       >
         <defs>
-          <marker id="arrowhead" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
-            <polygon points="0 0, 10 3.5, 0 7" fill="#94A3B8" />
+          <marker id="lg-arrow" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto">
+            <polygon points="0 0, 8 3, 0 6" fill="#94A3B8" />
           </marker>
-          <marker id="arrowhead-active" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
-            <polygon points="0 0, 10 3.5, 0 7" fill="#3B82F6" />
+          <marker id="lg-arrow-hi" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto">
+            <polygon points="0 0, 8 3, 0 6" fill="#F97316" />
           </marker>
-          <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
-            <feDropShadow dx="0" dy="2" stdDeviation="3" floodOpacity="0.12" />
+          <filter id="lg-shadow" x="-25%" y="-25%" width="150%" height="150%">
+            <feDropShadow dx="0" dy="2" stdDeviation="3" floodOpacity="0.10" />
           </filter>
-          <filter id="shadow-active" x="-20%" y="-20%" width="140%" height="140%">
-            <feDropShadow dx="0" dy="4" stdDeviation="6" floodOpacity="0.25" />
+          <filter id="lg-shadow-root" x="-25%" y="-25%" width="150%" height="150%">
+            <feDropShadow dx="0" dy="4" stdDeviation="8" floodOpacity="0.22" />
           </filter>
         </defs>
 
-        <g transform={`translate(${pan.x + 20},${pan.y + 20}) scale(${zoom})`}>
-          {/* Draw column highlight bands for layers */}
+        <g transform={`translate(${pan.x},${pan.y}) scale(${zoom})`}>
+
+          {/* Swim-lane backgrounds per layer */}
           {[-2, -1, 0, 1, 2].map(l => {
-            const nodesInLayer = tableNodes.filter(n => n.layer === l);
-            if (!nodesInLayer.length) return null;
-            const xs = nodesInLayer.map(n => positions[n.id]?.x ?? 0);
-            const minX = Math.min(...xs) - NODE_W / 2 - 12;
-            const maxX = Math.max(...xs) + NODE_W / 2 + 12;
+            const lane = tableNodes.filter(n => n.layer === l);
+            if (!lane.length) return null;
+            const xs = lane.map(n => positions[n.id]?.x ?? 0);
+            const ys = lane.map(n => positions[n.id]?.y ?? 0);
+            const laneMinX = Math.min(...xs) - NODE_W / 2 - 18;
+            const laneMaxX = Math.max(...xs) + NODE_W / 2 + 18;
+            const laneMinY = Math.min(...ys) - NODE_H / 2 - 28;
+            const laneMaxY = Math.max(...ys) + NODE_H / 2 + 12;
+            const label = l < 0 ? `L${l} Upstream` : l > 0 ? `L+${l} Downstream` : "Selected";
             return (
-              <rect key={l} x={minX} y={20} width={maxX - minX} height={dims.h - 80}
-                fill={l === 0 ? "#EFF6FF" : "#F8FAFC"} rx="8" opacity="0.7" />
+              <g key={l}>
+                <rect x={laneMinX} y={laneMinY} width={laneMaxX - laneMinX} height={laneMaxY - laneMinY}
+                  fill={l === 0 ? "#EFF6FF" : l < 0 ? "#F8FAFC" : "#FFF7ED"}
+                  stroke={l === 0 ? "#BFDBFE" : "#E2E8F0"}
+                  strokeWidth="1" rx="10" opacity="0.85" />
+                <text x={(laneMinX + laneMaxX) / 2} y={laneMinY + 16}
+                  textAnchor="middle" fontSize="10" fill={l === 0 ? "#3B82F6" : "#94A3B8"}
+                  fontWeight="600" style={{ fontFamily: "ui-sans-serif, system-ui" }}>
+                  {label}
+                </text>
+              </g>
             );
           })}
 
@@ -567,27 +699,19 @@ const LineageGraph = ({ tableId, allTables, onNodeClick }) => {
             const p1 = positions[e.from];
             const p2 = positions[e.to];
             if (!p1 || !p2) return null;
-            const isActive = e.from === tableId || e.to === tableId;
+            const onPath = highlightedPath && highlightedPath.has(e.from) && highlightedPath.has(e.to);
+            const dimmed = highlightedPath && !onPath;
             const mx = (p1.x + p2.x) / 2;
             return (
-              <g key={i}>
-                <path
-                  d={`M ${p1.x + NODE_W / 2} ${p1.y} C ${mx} ${p1.y}, ${mx} ${p2.y}, ${p2.x - NODE_W / 2} ${p2.y}`}
-                  fill="none"
-                  stroke={isActive ? "#3B82F6" : "#CBD5E1"}
-                  strokeWidth={isActive ? 2 : 1.5}
-                  strokeDasharray={e.type === "etl" ? "5,3" : undefined}
-                  markerEnd={`url(#${isActive ? "arrowhead-active" : "arrowhead"})`}
-                  opacity={isActive ? 1 : 0.6}
-                />
-                {/* ETL label on edge midpoint */}
-                {isActive && (
-                  <g transform={`translate(${mx}, ${(p1.y + p2.y) / 2})`}>
-                    <rect x="-22" y="-9" width="44" height="18" rx="9" fill="#DBEAFE" stroke="#93C5FD" strokeWidth="1" />
-                    <text x="0" y="4" textAnchor="middle" fontSize="8" fill="#1D4ED8" fontWeight="600">ETL Job</text>
-                  </g>
-                )}
-              </g>
+              <path key={i}
+                d={`M ${p1.x + NODE_W / 2} ${p1.y} C ${mx} ${p1.y}, ${mx} ${p2.y}, ${p2.x - NODE_W / 2} ${p2.y}`}
+                fill="none"
+                stroke={onPath ? "#F97316" : "#CBD5E1"}
+                strokeWidth={onPath ? 2.5 : 1.5}
+                strokeDasharray={e.type === "etl" ? "6,4" : undefined}
+                markerEnd={`url(#${onPath ? "lg-arrow-hi" : "lg-arrow"})`}
+                opacity={dimmed ? 0.15 : onPath ? 1 : 0.65}
+              />
             );
           })}
 
@@ -597,77 +721,77 @@ const LineageGraph = ({ tableId, allTables, onNodeClick }) => {
             if (!pos) return null;
             const isRoot = n.isRoot;
             const isHovered = hoveredNode === n.id;
+            const onPath = highlightedPath ? highlightedPath.has(n.id) : true;
+            const dimmed = !onPath;
             const qColor = qualityFill(n.quality);
             const tColor = trustColor(n.trust);
 
             return (
-              <g
-                key={n.id}
-                className="lineage-node"
+              <g key={n.id} className="lineage-node"
                 transform={`translate(${pos.x - NODE_W / 2}, ${pos.y - NODE_H / 2})`}
-                onClick={() => onNodeClick && onNodeClick(n.id)}
+                onClick={() => {
+                  const path = getPathNodes(n.id);
+                  setHighlightedPath(prev => (prev && prev.has(n.id) && prev.size === path.size) ? null : path);
+                  onNodeClick && onNodeClick(n.id);
+                }}
                 onMouseEnter={() => setHoveredNode(n.id)}
                 onMouseLeave={() => setHoveredNode(null)}
-                style={{ cursor: "pointer" }}
-                filter={isRoot ? "url(#shadow-active)" : "url(#shadow)"}
+                style={{ cursor: "pointer", opacity: dimmed ? 0.3 : 1, transition: "opacity 0.2s" }}
+                filter={isRoot ? "url(#lg-shadow-root)" : "url(#lg-shadow)"}
               >
                 {/* Node body */}
-                <rect
-                  width={NODE_W} height={NODE_H} rx="10"
+                <rect width={NODE_W} height={NODE_H} rx="10"
                   fill={isRoot ? "#1E40AF" : "white"}
-                  stroke={isRoot ? "#1D4ED8" : isHovered ? "#3B82F6" : "#E2E8F0"}
+                  stroke={isRoot ? "#1D4ED8" : isHovered ? "#F97316" : "#E2E8F0"}
                   strokeWidth={isRoot ? 0 : isHovered ? 2 : 1}
                 />
-                {/* Quality stripe */}
-                <rect x={NODE_W - 6} y={0} width={6} height={NODE_H} rx="0"
-                  fill={qColor} opacity={isRoot ? 0.6 : 1}
-                  style={{ borderTopRightRadius: 10, borderBottomRightRadius: 10 }} />
-                <rect x={NODE_W - 6} y={0} width={6} height={NODE_H}
-                  fill={qColor} rx="0" clipPath={`inset(0 0 0 0 round 0 10px 10px 0)`} opacity={isRoot ? 0.6 : 1} />
+                {/* Right quality stripe */}
+                <rect x={NODE_W - 5} y={10} width={5} height={NODE_H - 20}
+                  fill={qColor} rx="3" opacity={isRoot ? 0.5 : 0.9} />
 
                 {/* Trust star */}
-                <text x={NODE_W - 18} y={14} fontSize="10" fill={tColor} fontWeight="bold">★</text>
+                <text x={10} y={14} fontSize="9" fill={tColor} fontWeight="bold">★</text>
 
-                {/* Icon */}
-                <rect x={10} y={14} width={18} height={18} rx="4"
-                  fill={isRoot ? "rgba(255,255,255,0.2)" : "#EFF6FF"} />
-                <text x={19} y={26} fontSize="9" textAnchor="middle" fill={isRoot ? "white" : "#3B82F6"}>⊞</text>
+                {/* Table icon */}
+                <rect x={10} y={18} width={16} height={16} rx="3"
+                  fill={isRoot ? "rgba(255,255,255,0.18)" : "#EFF6FF"} />
+                <text x={18} y={30} fontSize="8" textAnchor="middle" fill={isRoot ? "white" : "#3B82F6"}>⊞</text>
 
                 {/* Table name */}
-                <text x={34} y={25} fontSize="11" fontWeight="700" fill={isRoot ? "white" : "#1E293B"}
+                <text x={32} y={31} fontSize="11" fontWeight="700"
+                  fill={isRoot ? "white" : "#1E293B"}
                   style={{ fontFamily: "ui-monospace, monospace" }}>
-                  {n.label.length > 16 ? n.label.slice(0, 15) + "…" : n.label}
+                  {n.label.length > 17 ? n.label.slice(0, 16) + "…" : n.label}
                 </text>
 
                 {/* Schema */}
-                <text x={34} y={38} fontSize="9" fill={isRoot ? "rgba(255,255,255,0.7)" : "#64748B"}>
+                <text x={32} y={44} fontSize="9" fill={isRoot ? "rgba(255,255,255,0.65)" : "#64748B"}>
                   {n.schema}
                 </text>
 
-                {/* Quality score */}
+                {/* Quality score + domain pill */}
                 {n.quality && (
-                  <text x={10} y={56} fontSize="9" fill={isRoot ? "rgba(255,255,255,0.7)" : "#64748B"}>
+                  <text x={10} y={64} fontSize="9" fill={isRoot ? "rgba(255,255,255,0.6)" : "#64748B"}>
                     QS: {n.quality}%
                   </text>
                 )}
-
-                {/* Domain pill */}
                 {n.domain && (
                   <>
-                    <rect x={70} y={47} width={Math.min(n.domain.length * 5 + 8, 72)} height={13} rx="6"
-                      fill={isRoot ? "rgba(255,255,255,0.15)" : "#F1F5F9"} />
-                    <text x={74} y={57} fontSize="8" fill={isRoot ? "rgba(255,255,255,0.8)" : "#475569"}>
-                      {n.domain.length > 10 ? n.domain.slice(0, 9) + "…" : n.domain}
+                    <rect x={60} y={54} width={Math.min(n.domain.length * 5 + 8, 80)} height={13} rx="6"
+                      fill={isRoot ? "rgba(255,255,255,0.12)" : "#F1F5F9"} />
+                    <text x={64} y={64} fontSize="8" fill={isRoot ? "rgba(255,255,255,0.75)" : "#475569"}>
+                      {n.domain.length > 11 ? n.domain.slice(0, 10) + "…" : n.domain}
                     </text>
                   </>
                 )}
 
                 {/* Hover tooltip */}
-                {isHovered && !isRoot && (
-                  <g transform={`translate(${NODE_W / 2 - 60}, ${-50})`}>
-                    <rect x="0" y="0" width="120" height="40" rx="6" fill="#1E293B" />
-                    <text x="10" y="14" fontSize="10" fill="white" fontWeight="600">{n.label}</text>
-                    <text x="10" y="28" fontSize="9" fill="#94A3B8">Click to explore lineage</text>
+                {isHovered && (
+                  <g transform={`translate(${NODE_W / 2 - 70}, ${-52})`}>
+                    <rect x="0" y="0" width="140" height="42" rx="7" fill="#1E293B" />
+                    <polygon points="65,42 75,52 85,42" fill="#1E293B" />
+                    <text x="10" y="16" fontSize="10" fill="white" fontWeight="700">{n.label}</text>
+                    <text x="10" y="30" fontSize="9" fill="#94A3B8">Click to highlight path</text>
                   </g>
                 )}
               </g>
@@ -1525,7 +1649,7 @@ const InfoPanel = ({ activeTab, catalogTables, catalogIssues, mockAgents, realCo
           <div style={{ fontSize: '11px', fontWeight: '700', background: 'rgba(22,163,74,.1)', color: '#16a34a', padding: '2px 8px', borderRadius: '20px' }}>↑ 3.1%</div>
         </div>
         <div style={{ fontSize: '11.5px', color: 'var(--muted)', marginBottom: '10px' }}>Avg quality across all tables</div>
-        <Stats3 items={[[realConnections.length || 6, 'Connections'], [highIssues, 'Open Issues', 'var(--orange)'], ['247', 'Rules Run']]} />
+        <Stats3 items={[[realConnections.length, 'Connections'], [highIssues, 'Open Issues', 'var(--orange)'], [catalogTables.length ? 247 : 0, 'Rules Run']]} />
       </IC>
       <IC>
         <SecHdr label="Today's Scans" right={<span style={{ fontSize: '12px', color: 'var(--muted)', cursor: 'pointer' }}>View all ›</span>} />
@@ -1578,7 +1702,7 @@ const InfoPanel = ({ activeTab, catalogTables, catalogIssues, mockAgents, realCo
     connections: () => <>
       <IC>
         <SecHdr label="Connection Health" right={<LiveDot />} />
-        <Stats3 items={[[realConnections.filter(c=>c.status==='ok').length||5,'Connected','#16a34a'],[realConnections.filter(c=>c.status==='warning').length||1,'Warning','var(--orange)'],[(realConnections.reduce((a,c)=>a+(c.table_count||0),0)||2920).toLocaleString(),'Tables']]} />
+        <Stats3 items={[[realConnections.filter(c=>c.status==='ok').length,'Connected','#16a34a'],[realConnections.filter(c=>c.status==='warning').length,'Warning','var(--orange)'],[realConnections.reduce((a,c)=>a+(c.table_count||0),0).toLocaleString(),'Tables']]} />
       </IC>
       <IC>
         <SecHdr label="Filter by Type" />
@@ -1722,11 +1846,384 @@ const InfoPanel = ({ activeTab, catalogTables, catalogIssues, mockAgents, realCo
 };
 
 // ─── MAIN APP ─────────────────────────────────────────────────────────────────
+// ── AGENTS TAB (module-level — must NOT be defined inside DataIQApp)
+// Defined here to prevent React unmount/remount on every parent re-render.
+// AgentLogs WebSocket updates trigger frequent parent state changes; an inner
+// component definition would be a new type each render → scroll resets to top.
+const AgentsTab = ({ backendOnline, liveAgents, agentLogs, llmConfigured }) => {
+  // ── LLM config state ──────────────────────────────────────────────────────
+  const [llmConfig, setLlmConfig] = useState(null);          // saved config from backend
+  const [llmModels, setLlmModels] = useState([]);            // provider/model options
+  const [llmProvider, setLlmProvider] = useState("anthropic");
+  const [llmModel, setLlmModel] = useState("claude-sonnet-4-6");
+  const [llmApiKey, setLlmApiKey] = useState("");
+  const [llmSaving, setLlmSaving] = useState(false);
+  const [llmTesting, setLlmTesting] = useState(false);
+  const [llmTestResult, setLlmTestResult] = useState(null);  // {ok, message}
+  const [llmShowKey, setLlmShowKey] = useState(false);
+
+  useEffect(() => {
+    if (!backendOnline) return;
+    apiFetch("/api/llm/models").then(data => {
+      if (Array.isArray(data)) setLlmModels(data);
+    });
+    apiFetch("/api/llm/config").then(data => {
+      if (data && data.configured) {
+        setLlmConfig(data);
+        setLlmProvider(data.provider);
+        setLlmModel(data.model);
+      }
+    });
+  }, [backendOnline]);
+
+  // Reset model when provider changes
+  useEffect(() => {
+    const group = llmModels.find(g => g.provider === llmProvider);
+    if (group && group.models.length > 0) {
+      setLlmModel(group.models[0].id);
+    }
+  }, [llmProvider, llmModels]);
+
+  const saveLlmConfig = async () => {
+    setLlmSaving(true);
+    setLlmTestResult(null);
+    try {
+      const res = await apiFetch("/api/llm/config", {
+        method: "PUT",
+        body: JSON.stringify({ provider: llmProvider, model: llmModel, api_key: llmApiKey }),
+      });
+      if (res && res.configured) {
+        setLlmConfig(res);
+        setLlmApiKey("");
+      }
+    } finally {
+      setLlmSaving(false);
+    }
+  };
+
+  const testLlmConfig = async () => {
+    setLlmTesting(true);
+    setLlmTestResult(null);
+    try {
+      const res = await apiFetch("/api/llm/test", { method: "POST" });
+      setLlmTestResult(res);
+    } catch (e) {
+      setLlmTestResult({ ok: false, message: String(e) });
+    } finally {
+      setLlmTesting(false);
+    }
+  };
+
+  const removeLlmConfig = async () => {
+    await apiFetch("/api/llm/config", { method: "DELETE" });
+    setLlmConfig(null);
+    setLlmApiKey("");
+    setLlmTestResult(null);
+  };
+
+  const providerLabel = { anthropic: "Claude (Anthropic)", openai: "OpenAI", groq: "Groq", gemini: "Google Gemini", ollama: "Ollama (local)" };
+  const providerIcon  = { anthropic: "🟣", openai: "🟢", groq: "⚡", gemini: "🔵", ollama: "🖥" };
+  const providerFree  = { groq: true, gemini: true, ollama: true };
+
+  // ── Use live backend agents if available, fall back to mock ───────────────
+  // Live agents from backend always shown; mock fallback only when LLM is configured
+  const displayAgents = backendOnline && Object.keys(liveAgents).length > 0
+    ? Object.values(liveAgents)
+    : llmConfigured ? mockAgents.map(a => ({ ...a, tasks_completed: a.tasksCompleted })) : [];
+
+  const toggleAgent = async (agentId, currentStatus) => {
+    if (!backendOnline) return;
+    const endpoint = currentStatus === "active" ? "stop" : "start";
+    await apiFetch(`/agents/${agentId}/${endpoint}`, { method: "POST" });
+  };
+
+  const liveCount = displayAgents.filter(a => a.status === "active").length;
+
+  const agentIconBg = { profiling: '#eff6ff', validation: '#f0fdf4', lineage: '#f5f3ff', monitoring: '#fff7ed', governance: '#fff1f2', ingestion: '#f0fdf4' };
+  return (
+    <div className="flex-1 overflow-auto" style={{ background: 'var(--bg)' }}>
+      <div style={{ padding: '22px 24px', maxWidth: '1200px', margin: '0 auto' }}>
+        {/* Header */}
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '20px' }}>
+          <h1 style={{ fontSize: '20px', fontWeight: '700', color: 'var(--text)', display: 'flex', alignItems: 'center', gap: '6px' }}>
+            AI Agents <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: 'var(--orange)', display: 'inline-block', verticalAlign: 'middle' }} />
+          </h1>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            {backendOnline
+              ? <span style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', fontWeight: '600', background: 'rgba(22,163,74,.08)', color: '#16a34a', border: '1px solid rgba(22,163,74,.2)', padding: '5px 12px', borderRadius: '20px' }}><Wifi style={{ width: '13px', height: '13px' }} />Live — {liveCount} of {displayAgents.length} active</span>
+              : <span style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', fontWeight: '600', background: 'rgba(202,138,4,.08)', color: '#ca8a04', border: '1px solid rgba(202,138,4,.2)', padding: '5px 12px', borderRadius: '20px' }}><WifiOff style={{ width: '13px', height: '13px' }} />Demo mode</span>
+            }
+          </div>
+        </div>
+
+        {!backendOnline && (
+          <div style={{ background: 'rgba(232,98,43,.06)', border: '1px solid rgba(232,98,43,.2)', borderRadius: '12px', padding: '14px 18px', display: 'flex', gap: '12px', alignItems: 'flex-start', marginBottom: '16px' }}>
+            <Bot style={{ width: '18px', height: '18px', color: 'var(--orange)', flexShrink: 0, marginTop: '2px' }} />
+            <div>
+              <div style={{ fontSize: '13px', fontWeight: '600', color: 'var(--dark)' }}>Start the backend to activate real agents</div>
+              <div style={{ fontSize: '12px', color: 'var(--muted)', marginTop: '3px' }}>Double-click <strong>Start Backend.command</strong> — agents will connect automatically.</div>
+            </div>
+          </div>
+        )}
+
+        {/* Agent grid */}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '14px', marginBottom: '16px' }}>
+          {displayAgents.map(agent => {
+            const agentId = agent.id;
+            const status  = agent.status;
+            const isActive = status === "active";
+            const mockMeta = mockAgents.find(m => m.id === agentId || m.name === agent.name) || {};
+            const bg = agentIconBg[agent.type] || '#f8f8f8';
+            return (
+              <div key={agentId} style={{
+                background: 'var(--card)', borderRadius: '16px', border: '1px solid var(--border)',
+                borderTop: `3px solid ${isActive ? '#16a34a' : 'var(--border)'}`,
+                padding: '16px 18px',
+              }}>
+                <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: '12px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                    <div style={{ width: '38px', height: '38px', borderRadius: '10px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '18px', background: bg, flexShrink: 0 }}>
+                      {mockMeta.icon || '🤖'}
+                    </div>
+                    <div>
+                      <div style={{ fontSize: '13.5px', fontWeight: '700', color: 'var(--text)' }}>{agent.name}</div>
+                      <AgentTypeBadge type={agent.type} />
+                    </div>
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <span style={{ fontSize: '11px', fontWeight: '700', padding: '3px 9px', borderRadius: '20px', background: isActive ? 'rgba(22,163,74,.1)' : 'rgba(107,114,128,.08)', color: isActive ? '#16a34a' : '#6b7280' }}>
+                      {isActive ? 'Active' : 'Idle'}
+                    </span>
+                    <button
+                      onClick={() => toggleAgent(agentId, status)}
+                      disabled={!backendOnline}
+                      style={{ padding: '6px', background: 'none', border: 'none', borderRadius: '8px', cursor: backendOnline ? 'pointer' : 'not-allowed', opacity: backendOnline ? 1 : 0.4, color: isActive ? '#16a34a' : 'var(--muted)' }}
+                      title={backendOnline ? (isActive ? "Stop agent" : "Start agent") : "Start backend first"}
+                    >
+                      {isActive ? <Pause style={{ width: '14px', height: '14px' }} /> : <Play style={{ width: '14px', height: '14px' }} />}
+                    </button>
+                  </div>
+                </div>
+                <p style={{ fontSize: '12px', color: 'var(--muted)', lineHeight: '1.5', marginBottom: '12px' }}>{mockMeta.description || agent.description || ""}</p>
+                {/* Stats */}
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '6px', marginBottom: '10px' }}>
+                  {[
+                    { label: "Total", value: (agent.tasks_completed ?? agent.tasksCompleted ?? mockMeta.tasksCompleted ?? 0).toLocaleString() },
+                    { label: "Today",    value: (agent.tasks_today ?? mockMeta.today ?? 0).toString() },
+                    { label: "Avg time",    value: agent.uptime ? agent.uptime.split(".")[0] : (mockMeta.avgRuntime || "—") },
+                  ].map(({ label, value }) => (
+                    <div key={label} style={{ background: 'var(--bg)', borderRadius: '8px', padding: '8px 6px', textAlign: 'center' }}>
+                      <div style={{ fontSize: '14px', fontWeight: '700', color: 'var(--text)' }}>{value}</div>
+                      <div style={{ fontSize: '10.5px', color: 'var(--muted)', marginTop: '2px' }}>{label}</div>
+                    </div>
+                  ))}
+                </div>
+                {/* Footer */}
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingTop: '10px', borderTop: '1px solid var(--border)' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+                    <span style={{ width: '7px', height: '7px', borderRadius: '50%', background: isActive ? '#16a34a' : '#d1d5db', display: 'inline-block' }} />
+                    <span style={{ fontSize: '11.5px', color: 'var(--muted)', textTransform: 'capitalize' }}>{status}</span>
+                  </div>
+                  <span style={{ fontSize: '11px', color: 'var(--muted)' }}>
+                    {agent.last_run ? `Last: ${new Date(agent.last_run).toLocaleTimeString()}` : (agent.lastRun ? `Last: ${agent.lastRun}` : "Never run")}
+                  </span>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+
+        {/* Live log — only shown when LLM is configured */}
+        <div style={{ background: 'var(--card)', borderRadius: '16px', border: '1px solid var(--border)', overflow: 'hidden' }}>
+          <div style={{ padding: '14px 18px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <span style={{ width: '7px', height: '7px', borderRadius: '50%', background: llmConfig?.configured && backendOnline ? '#16a34a' : '#d1d5db', display: 'inline-block' }} />
+              <span style={{ fontSize: '13px', fontWeight: '600', color: 'var(--text)' }}>Agent Activity Log</span>
+            </div>
+            {llmConfig?.configured && backendOnline && (
+              <span style={{ fontSize: '11.5px', color: 'var(--muted)' }}>{agentLogs.length} entries</span>
+            )}
+          </div>
+
+          {/* Gate: LLM not configured */}
+          {!llmConfig?.configured ? (
+            <div style={{ padding: '36px 24px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '12px', height: '180px', justifyContent: 'center' }}>
+              <div style={{ width: '42px', height: '42px', borderRadius: '12px', background: 'rgba(232,98,43,.08)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <Cpu style={{ width: '20px', height: '20px', color: 'var(--orange)' }} />
+              </div>
+              <div style={{ textAlign: 'center' }}>
+                <div style={{ fontSize: '13.5px', fontWeight: '700', color: 'var(--text)', marginBottom: '4px' }}>No LLM connected</div>
+                <div style={{ fontSize: '12px', color: 'var(--muted)', lineHeight: '1.5' }}>
+                  Agent logs are only available when an LLM is active.<br />Connect one below using your API key.
+                </div>
+              </div>
+              <button
+                onClick={() => { const el = document.getElementById('llm-config-card'); if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' }); }}
+                style={{ padding: '7px 18px', background: 'var(--orange)', color: '#fff', border: 'none', borderRadius: '9px', fontSize: '12.5px', fontWeight: '600', cursor: 'pointer', fontFamily: 'inherit' }}
+              >
+                Connect LLM via API key ↓
+              </button>
+            </div>
+          ) : !backendOnline ? (
+            /* Gate: backend offline */
+            <div style={{ padding: '36px 24px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '10px', height: '180px', justifyContent: 'center' }}>
+              <WifiOff style={{ width: '22px', height: '22px', color: 'var(--muted)' }} />
+              <div style={{ textAlign: 'center' }}>
+                <div style={{ fontSize: '13px', fontWeight: '600', color: 'var(--text)', marginBottom: '4px' }}>Backend offline</div>
+                <div style={{ fontSize: '12px', color: 'var(--muted)' }}>Start the backend to stream live agent logs.</div>
+              </div>
+            </div>
+          ) : (
+            /* Live log stream */
+            <div style={{ padding: '14px 18px', height: '220px', overflow: 'auto', fontFamily: 'ui-monospace, monospace', display: 'flex', flexDirection: 'column', gap: '4px' }}>
+              {agentLogs.slice().reverse().map(log => (
+                <div key={log.id} style={{ fontSize: '11.5px', display: 'flex', gap: '10px' }}>
+                  <span style={{ color: 'var(--muted)', flexShrink: 0 }}>{log.timestamp}</span>
+                  <span style={{ flexShrink: 0, fontWeight: '700', color: log.level === "error" ? "#dc2626" : log.level === "warn" ? "#ca8a04" : "#16a34a" }}>
+                    [{(log.level || "info").toUpperCase()}]
+                  </span>
+                  <span style={{ color: 'var(--orange)', flexShrink: 0 }}>[{log.agent}]</span>
+                  <span style={{ color: 'var(--text)' }}>{log.message}</span>
+                </div>
+              ))}
+              {agentLogs.length === 0 && <div style={{ color: 'var(--muted)', fontSize: '12px' }}>Waiting for agent activity…</div>}
+            </div>
+          )}
+        </div>
+
+        {/* ── AI Configuration card ─────────────────────────────────────── */}
+        <div id="llm-config-card" style={{ background: 'var(--card)', borderRadius: '16px', border: '1px solid var(--border)', borderTop: `3px solid ${llmConfig?.configured ? '#16a34a' : 'var(--orange)'}`, marginTop: '14px', overflow: 'hidden' }}>
+          <div style={{ padding: '14px 18px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <Cpu style={{ width: '15px', height: '15px', color: llmConfig?.configured ? '#16a34a' : 'var(--orange)' }} />
+              <span style={{ fontSize: '13px', fontWeight: '700', color: 'var(--text)' }}>AI Configuration</span>
+              {llmConfig?.configured
+                ? <span style={{ fontSize: '11px', fontWeight: '700', padding: '2px 9px', borderRadius: '20px', background: 'rgba(22,163,74,.1)', color: '#16a34a' }}>
+                    {providerLabel[llmConfig.provider] || llmConfig.provider} · {llmConfig.model}
+                  </span>
+                : <span style={{ fontSize: '11px', fontWeight: '700', padding: '2px 9px', borderRadius: '20px', background: 'rgba(232,98,43,.1)', color: 'var(--orange)' }}>
+                    Not configured — rule-based mode
+                  </span>
+              }
+            </div>
+            {llmConfig?.configured && (
+              <button onClick={removeLlmConfig} style={{ fontSize: '11.5px', color: '#dc2626', background: 'none', border: 'none', cursor: 'pointer', padding: '4px 8px', borderRadius: '6px' }}>Remove key</button>
+            )}
+          </div>
+
+          <div style={{ padding: '18px', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px' }}>
+            {/* Provider */}
+            <div style={{ gridColumn: '1 / -1' }}>
+              <label style={{ fontSize: '11.5px', fontWeight: '600', color: 'var(--muted)', display: 'block', marginBottom: '6px' }}>Provider</label>
+              <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+                {(llmModels.length
+                  ? llmModels.map(g => g.provider)
+                  : ["anthropic","openai","groq","gemini","ollama"]
+                ).map(p => (
+                  <button
+                    key={p}
+                    onClick={() => setLlmProvider(p)}
+                    disabled={!backendOnline}
+                    style={{
+                      position: 'relative', padding: '8px 10px', border: `1.5px solid ${llmProvider === p ? 'var(--dark)' : 'var(--border)'}`,
+                      borderRadius: '10px', background: llmProvider === p ? 'var(--dark)' : 'var(--card)',
+                      color: llmProvider === p ? '#fff' : 'var(--text)', fontSize: '12px', fontWeight: '600',
+                      cursor: backendOnline ? 'pointer' : 'not-allowed', transition: 'all .15s', whiteSpace: 'nowrap',
+                    }}
+                  >
+                    {providerIcon[p] || '🤖'} {providerLabel[p] || p}
+                    {providerFree[p] && <span style={{ marginLeft: '5px', fontSize: '9px', fontWeight: '800', padding: '1px 5px', borderRadius: '4px', background: llmProvider === p ? 'rgba(255,255,255,.2)' : 'rgba(22,163,74,.12)', color: llmProvider === p ? '#fff' : '#16a34a' }}>FREE</span>}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Model */}
+            <div>
+              <label style={{ fontSize: '11.5px', fontWeight: '600', color: 'var(--muted)', display: 'block', marginBottom: '6px' }}>Model</label>
+              <select
+                value={llmModel}
+                onChange={e => setLlmModel(e.target.value)}
+                disabled={!backendOnline}
+                style={{ width: '100%', padding: '8px 10px', border: '1.5px solid var(--border)', borderRadius: '10px', background: 'var(--card)', color: 'var(--text)', fontSize: '12.5px', fontWeight: '500', cursor: backendOnline ? 'pointer' : 'not-allowed', outline: 'none', fontFamily: 'inherit' }}
+              >
+                {(llmModels.find(g => g.provider === llmProvider)?.models || [
+                  { id: "claude-sonnet-4-6", label: "Claude Sonnet 4 (recommended)" },
+                  { id: "claude-haiku-4-5-20251001", label: "Claude Haiku 4 (fast / low cost)" },
+                  { id: "claude-opus-4-6", label: "Claude Opus 4 (most capable)" },
+                ]).map(m => (
+                  <option key={m.id} value={m.id}>{m.label}</option>
+                ))}
+              </select>
+            </div>
+
+            {/* API Key */}
+            <div style={{ gridColumn: '1 / -1' }}>
+              <label style={{ fontSize: '11.5px', fontWeight: '600', color: 'var(--muted)', display: 'block', marginBottom: '6px' }}>
+                API Key {llmConfig?.configured && <span style={{ fontWeight: '400', color: 'var(--muted)' }}>(leave blank to keep existing)</span>}
+              </label>
+              <div style={{ position: 'relative' }}>
+                <input
+                  type={llmShowKey ? "text" : "password"}
+                  placeholder={llmProvider === "ollama" ? "No key needed — type \"local\" or leave blank" : llmConfig?.configured ? "••••••••••••  (saved)" : "sk-ant-...  /  gsk_...  /  AIza..."}
+                  value={llmApiKey}
+                  onChange={e => setLlmApiKey(e.target.value)}
+                  disabled={!backendOnline || llmProvider === "ollama"}
+                  style={{ width: '100%', padding: '8px 40px 8px 10px', border: '1.5px solid var(--border)', borderRadius: '10px', background: llmProvider === "ollama" ? 'var(--bg)' : 'var(--card)', color: 'var(--text)', fontSize: '12.5px', fontFamily: 'ui-monospace, monospace', outline: 'none', boxSizing: 'border-box' }}
+                />
+                <button
+                  onClick={() => setLlmShowKey(v => !v)}
+                  style={{ position: 'absolute', right: '10px', top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--muted)', padding: '2px' }}
+                >
+                  {llmShowKey ? <EyeOff style={{ width: '14px', height: '14px' }} /> : <Eye style={{ width: '14px', height: '14px' }} />}
+                </button>
+              </div>
+            </div>
+
+            {/* Buttons + test result */}
+            <div style={{ gridColumn: '1 / -1', display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+              <button
+                onClick={saveLlmConfig}
+                disabled={!backendOnline || llmSaving || (llmProvider !== 'ollama' && !llmApiKey.trim() && !llmConfig?.configured)}
+                style={{ padding: '8px 20px', background: 'var(--dark)', color: '#fff', border: 'none', borderRadius: '10px', fontSize: '12.5px', fontWeight: '600', cursor: backendOnline ? 'pointer' : 'not-allowed', opacity: (llmSaving || (!llmApiKey.trim() && !llmConfig?.configured)) ? 0.5 : 1, transition: 'opacity .15s', fontFamily: 'inherit' }}
+              >
+                {llmSaving ? "Saving…" : "Save Configuration"}
+              </button>
+              <button
+                onClick={testLlmConfig}
+                disabled={!backendOnline || !llmConfig?.configured || llmTesting}
+                style={{ padding: '8px 20px', background: 'none', color: 'var(--dark)', border: '1.5px solid var(--border)', borderRadius: '10px', fontSize: '12.5px', fontWeight: '600', cursor: (backendOnline && llmConfig?.configured) ? 'pointer' : 'not-allowed', opacity: (!llmConfig?.configured || llmTesting) ? 0.5 : 1, transition: 'opacity .15s', fontFamily: 'inherit' }}
+              >
+                {llmTesting ? "Testing…" : "Test Connection"}
+              </button>
+              {llmTestResult && (
+                <span style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', fontWeight: '600', padding: '6px 12px', borderRadius: '20px', background: llmTestResult.ok ? 'rgba(22,163,74,.1)' : 'rgba(220,38,38,.1)', color: llmTestResult.ok ? '#16a34a' : '#dc2626' }}>
+                  {llmTestResult.ok ? <CheckCircle style={{ width: '13px', height: '13px' }} /> : <AlertTriangle style={{ width: '13px', height: '13px' }} />}
+                  {llmTestResult.message}
+                </span>
+              )}
+              {!backendOnline && (
+                <span style={{ fontSize: '12px', color: 'var(--muted)' }}>Start the backend to configure AI</span>
+              )}
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  );
+
+};
+
 function DataIQApp({ authUser, handleLogout }) {
   const [activeTab, setActiveTab] = useState("dashboard");
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedTable, setSelectedTable] = useState(null);
   const [lineageTableId, setLineageTableId] = useState("gold.fact_orders");
+  // Lifted tab-level UI state — prevents reset when parent re-renders cause inner component remounts
+  const [qualitySection, setQualitySection] = useState("issues");
+  const [taskFilter, setTaskFilter] = useState("all");
+  const [chartPeriod, setChartPeriod] = useState('week');
   const [agentLogs, setAgentLogs] = useState([]);
   const [searchFocused, setSearchFocused] = useState(false);
   const [agentStates, setAgentStates] = useState({});
@@ -1736,6 +2233,7 @@ function DataIQApp({ authUser, handleLogout }) {
 
   // ── Backend state ────────────────────────────────────────────────────────
   const [backendOnline, setBackendOnline] = useState(false);
+  const [llmConfigured, setLlmConfigured] = useState(false);  // true once /api/llm/config confirms a key exists
   const [liveAgents, setLiveAgents] = useState({});   // agent_id → agent object from API
   const [liveTasks, setLiveTasks] = useState([]);      // tasks from backend
   const wsRef = useRef(null);
@@ -1753,8 +2251,8 @@ function DataIQApp({ authUser, handleLogout }) {
   const [profileResult, setProfileResult] = useState(null);
 
   // ── Live catalog state (real data from backend) ────────────────────────────
-  const [catalogTables, setCatalogTables] = useState(mockTables);
-  const [catalogIssues, setCatalogIssues] = useState(mockIssues);
+  const [catalogTables, setCatalogTables] = useState([]);  // empty until real DB connected
+  const [catalogIssues, setCatalogIssues] = useState([]);  // empty until real DB connected
 
   const loadRealConnections = async () => {
     const data = await apiFetch("/api/connections");
@@ -1791,6 +2289,16 @@ function DataIQApp({ authUser, handleLogout }) {
     const t = setInterval(check, 10000);
     return () => clearInterval(t);
   }, []);
+
+  // Sync LLM configured flag — gates agent UI and log stream across all tabs
+  useEffect(() => {
+    if (!backendOnline) { setLlmConfigured(false); return; }
+    const checkLlm = () =>
+      apiFetch("/api/llm/config").then(d => setLlmConfigured(!!(d && d.configured)));
+    checkLlm();
+    const id = setInterval(checkLlm, 30000);
+    return () => clearInterval(id);
+  }, [backendOnline]);
 
   // Connect WebSocket when backend is online
   useEffect(() => {
@@ -1978,23 +2486,68 @@ function DataIQApp({ authUser, handleLogout }) {
 
   // ── DASHBOARD TAB ──────────────────────────────────────────────────────────
   const Dashboard = () => {
+    // chartPeriod lifted to DataIQApp parent — prevents reset on parent re-renders
     const today = new Date().toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
-    const todayIdx = [1,2,3,4,5,6,0].indexOf(new Date().getDay()); // Mon=0 … Sun=6
-    // 7-day quality scores Mon→Sun, last value = today (seeded from avgQuality)
-    const weekScores = (() => {
-      const base = avgQuality || 94;
-      const seed = [base-4, base-2, base-5, base, base-3, base-6, base-5];
-      return seed.map(v => Math.min(100, Math.max(60, Math.round(v))));
-    })();
-    const maxH = 72; // max stem height px
-    const minScore = Math.min(...weekScores);
-    const maxScore = Math.max(...weekScores);
+    const base = avgQuality || 80;
+
+    // Data sets for each period
+    const chartData = {
+      hours: {
+        points: [
+          { label: '6am',  score: base-8  },
+          { label: '8am',  score: base-5  },
+          { label: '10am', score: base-3  },
+          { label: '12pm', score: base-6  },
+          { label: '2pm',  score: base-1  },
+          { label: '4pm',  score: base    },
+          { label: '6pm',  score: base-2  },
+          { label: '8pm',  score: base-4  },
+        ].map(p => ({ ...p, score: Math.min(100, Math.max(60, Math.round(p.score))) })),
+        todayIdx: (() => { const h = new Date().getHours(); return Math.min(7, Math.max(0, Math.floor((h - 6) / 2))); })(),
+        title: 'Quality Score — Today',
+        sub: 'Hourly avg',
+        trendLabel: '↑ 1.8% vs yesterday',
+        compareLabel: `Today's score vs yesterday's avg (${base-2}%)`,
+      },
+      day: {
+        points: [
+          { label: 'M', score: base-4 }, { label: 'T', score: base-2 },
+          { label: 'W', score: base-5 }, { label: 'T', score: base   },
+          { label: 'F', score: base-3 }, { label: 'S', score: base-6 },
+          { label: 'S', score: base-5 },
+        ].map(p => ({ ...p, score: Math.min(100, Math.max(60, Math.round(p.score))) })),
+        todayIdx: [1,2,3,4,5,6,0].indexOf(new Date().getDay()),
+        title: 'Quality Score — This Week',
+        sub: 'Daily avg',
+        trendLabel: '↑ 3.1%',
+        compareLabel: `This week's score is higher than last week's (${base-3}%)`,
+      },
+      week: {
+        points: [
+          { label: 'W1', score: base-7 }, { label: 'W2', score: base-4 },
+          { label: 'W3', score: base-6 }, { label: 'W4', score: base-3 },
+          { label: 'W5', score: base-1 }, { label: 'W6', score: base-5 },
+          { label: 'W7', score: base-2 }, { label: 'W8', score: base   },
+        ].map(p => ({ ...p, score: Math.min(100, Math.max(60, Math.round(p.score))) })),
+        todayIdx: 7,
+        title: 'Quality Score — Last 8 Weeks',
+        sub: 'Weekly avg',
+        trendLabel: '↑ 4.2% vs 8w ago',
+        compareLabel: `8-week trend — improving steadily from ${base-7}%`,
+      },
+    };
+
+    const cd = chartData[chartPeriod];
+    const maxH = 72;
+    const scores = cd.points.map(p => p.score);
+    const minScore = Math.min(...scores);
+    const maxScore = Math.max(...scores);
     const stemH = v => Math.round(((v - minScore) / (maxScore - minScore || 1)) * (maxH - 20) + 20);
     const kpiCards = [
-      { icon: '🗄', value: catalogTables.length || 2920, label: 'Total tables profiled', trend: `across ${realConnections.length || 6} connections`, trendType: 'nt', topColor: '#1c3d34' },
-      { icon: '📊', value: `${avgQuality}%`, label: 'Avg quality score', trend: '↑ 3.1% this week', trendType: 'up', topColor: '#16a34a' },
+      { icon: '🗄', value: catalogTables.length, label: 'Total tables profiled', trend: realConnections.length ? `across ${realConnections.length} connections` : 'Connect a database to start', trendType: 'nt', topColor: '#1c3d34' },
+      { icon: '📊', value: catalogTables.length ? `${avgQuality}%` : '—', label: 'Avg quality score', trend: catalogTables.length ? '↑ 3.1% this week' : 'No data yet', trendType: catalogTables.length ? 'up' : 'nt', topColor: '#16a34a' },
       { icon: '🚨', value: totalIssues, label: 'Open issues', trend: `↑ ${highIssues} high severity`, trendType: totalIssues > 0 ? 'dn' : 'nt', topColor: '#e8622b' },
-      { icon: '⚡', value: `${221}/${247}`, label: 'Rules passing today', trend: '89.5% pass rate', trendType: 'up', topColor: '#16a34a' },
+      { icon: '⚡', value: catalogTables.length ? `${221}/${247}` : '—', label: 'Rules passing today', trend: catalogTables.length ? '89.5% pass rate' : 'No data yet', trendType: catalogTables.length ? 'up' : 'nt', topColor: '#16a34a' },
     ];
     const trendStyle = t => t === 'up' ? { background: 'rgba(22,163,74,.1)', color: '#16a34a' } : t === 'dn' ? { background: 'rgba(220,38,38,.08)', color: '#dc2626' } : { background: 'rgba(107,114,128,.08)', color: '#6b7280' };
     const dashCardStyle = { background: '#fff', borderRadius: '16px', padding: '20px', border: '1px solid var(--border)' };
@@ -2025,64 +2578,67 @@ function DataIQApp({ authUser, handleLogout }) {
 
         {/* 2×2 grid */}
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px' }}>
-          {/* Quality Score — This Week (lollipop chart) */}
+          {/* Quality Score lollipop chart */}
           <div style={dashCardStyle}>
             {/* Card header */}
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '18px' }}>
-              <span style={{ fontSize: '14px', fontWeight: '600', color: 'var(--text)' }}>Quality Score — This Week</span>
-              <span style={{ fontSize: '12px', color: 'var(--muted)' }}>Daily avg</span>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '14px' }}>
+              <span style={{ fontSize: '14px', fontWeight: '600', color: 'var(--text)' }}>{cd.title}</span>
+              <span style={{ fontSize: '12px', color: 'var(--muted)' }}>{cd.sub}</span>
+            </div>
+
+            {/* Period toggle */}
+            <div style={{ display: 'flex', gap: '4px', marginBottom: '16px', background: 'var(--bg)', borderRadius: '10px', padding: '3px' }}>
+              {[['hours','Hours'],['day','Day'],['week','Weeks']].map(([key, label]) => (
+                <button key={key} onClick={() => setChartPeriod(key)} style={{
+                  flex: 1, padding: '5px 0', fontSize: '12px', fontWeight: '600',
+                  borderRadius: '8px', border: 'none', cursor: 'pointer', fontFamily: 'inherit',
+                  transition: 'all .15s',
+                  background: chartPeriod === key ? 'var(--card)' : 'transparent',
+                  color: chartPeriod === key ? 'var(--dark)' : 'var(--muted)',
+                  boxShadow: chartPeriod === key ? '0 1px 4px rgba(0,0,0,.08)' : 'none',
+                }}>{label}</button>
+              ))}
             </div>
 
             {/* Lollipop chart */}
-            <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', height: `${maxH + 28}px`, paddingBottom: '0', marginBottom: '0', position: 'relative' }}>
-              {['M','T','W','T','F','S','S'].map((day, i) => {
-                const isToday = i === todayIdx;
-                const score = weekScores[i];
+            <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', height: `${maxH + 28}px`, position: 'relative' }}>
+              {cd.points.map(({ label, score }, i) => {
+                const isActive = i === cd.todayIdx;
                 const h = stemH(score);
                 return (
                   <div key={i} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', flex: 1, position: 'relative' }}>
-                    {/* Tooltip badge above today */}
-                    {isToday && (
+                    {/* Tooltip badge */}
+                    {isActive && (
                       <div style={{
                         position: 'absolute', top: `${maxH - h - 28}px`,
                         background: 'var(--dark)', color: '#fff',
                         fontSize: '11px', fontWeight: '700',
                         padding: '3px 8px', borderRadius: '6px',
                         whiteSpace: 'nowrap', zIndex: 2,
-                        boxShadow: '0 2px 8px rgba(0,0,0,.15)',
+                        boxShadow: '0 2px 8px rgba(0,0,0,.18)',
                       }}>
                         {score}%
-                        {/* little triangle */}
                         <div style={{ position: 'absolute', bottom: '-5px', left: '50%', transform: 'translateX(-50%)', width: 0, height: 0, borderLeft: '5px solid transparent', borderRight: '5px solid transparent', borderTop: '5px solid var(--dark)' }} />
                       </div>
                     )}
-                    {/* Stem + dot container — grows from bottom */}
+                    {/* Stem + dot */}
                     <div style={{ flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'flex-end', alignItems: 'center', width: '100%', paddingTop: '28px' }}>
-                      {/* Dot */}
                       <div style={{
-                        width: isToday ? '11px' : '9px',
-                        height: isToday ? '11px' : '9px',
+                        width: isActive ? '11px' : '9px', height: isActive ? '11px' : '9px',
                         borderRadius: '50%',
-                        border: `2px solid ${isToday ? 'var(--dark)' : '#d1cec9'}`,
-                        background: isToday ? 'var(--card)' : 'var(--card)',
-                        zIndex: 1,
-                        flexShrink: 0,
-                        marginBottom: '-1px',
+                        border: `2px solid ${isActive ? 'var(--dark)' : '#d1cec9'}`,
+                        background: 'var(--card)', zIndex: 1, flexShrink: 0, marginBottom: '-1px',
                       }} />
-                      {/* Stem */}
                       <div style={{
-                        width: isToday ? '2px' : '1.5px',
-                        height: `${h}px`,
-                        background: isToday ? 'var(--dark)' : '#d1cec9',
-                        borderRadius: '1px',
+                        width: isActive ? '2px' : '1.5px', height: `${h}px`,
+                        background: isActive ? 'var(--dark)' : '#d1cec9', borderRadius: '1px',
                       }} />
                     </div>
-                    {/* Day label */}
+                    {/* Label */}
                     <div style={{
-                      fontSize: '11.5px', fontWeight: isToday ? '700' : '500',
-                      color: isToday ? 'var(--dark)' : 'var(--muted)',
-                      marginTop: '6px',
-                    }}>{day}</div>
+                      fontSize: '11px', fontWeight: isActive ? '700' : '500',
+                      color: isActive ? 'var(--dark)' : 'var(--muted)', marginTop: '6px',
+                    }}>{label}</div>
                   </div>
                 );
               })}
@@ -2093,10 +2649,10 @@ function DataIQApp({ authUser, handleLogout }) {
             {/* Score + trend */}
             <div style={{ marginTop: '16px', paddingTop: '16px', borderTop: '1px solid var(--border)' }}>
               <div style={{ display: 'flex', alignItems: 'baseline', gap: '10px', marginBottom: '4px' }}>
-                <span style={{ fontSize: '32px', fontWeight: '800', color: 'var(--text)', lineHeight: '1' }}>{weekScores[todayIdx]}%</span>
-                <span style={{ fontSize: '12px', fontWeight: '700', padding: '3px 8px', borderRadius: '20px', background: 'rgba(22,163,74,.1)', color: '#16a34a' }}>↑ 3.1%</span>
+                <span style={{ fontSize: '32px', fontWeight: '800', color: 'var(--text)', lineHeight: '1' }}>{cd.points[cd.todayIdx]?.score}%</span>
+                <span style={{ fontSize: '12px', fontWeight: '700', padding: '3px 8px', borderRadius: '20px', background: 'rgba(22,163,74,.1)', color: '#16a34a' }}>{cd.trendLabel}</span>
               </div>
-              <div style={{ fontSize: '12px', color: 'var(--muted)' }}>This week's score is higher than last week's (91.1%)</div>
+              <div style={{ fontSize: '12px', color: 'var(--muted)' }}>{cd.compareLabel}</div>
             </div>
           </div>
 
@@ -2374,7 +2930,9 @@ function DataIQApp({ authUser, handleLogout }) {
 
   // ── QUALITY TAB ────────────────────────────────────────────────────────────
   const QualityTab = () => {
-    const [activeSection, setActiveSection] = useState("issues");
+    // activeSection is lifted to DataIQApp to survive remounts caused by parent re-renders
+    const activeSection = qualitySection;
+    const setActiveSection = setQualitySection;
     return (
       <div className="flex-1 overflow-auto" style={{ background: 'var(--bg)' }}>
         <div style={{ padding: '22px 24px', maxWidth: '1200px', margin: '0 auto' }}>
@@ -2608,148 +3166,12 @@ function DataIQApp({ authUser, handleLogout }) {
   };
 
   // ── AGENTS TAB ─────────────────────────────────────────────────────────────
-  const AgentsTab = () => {
-    // Use live backend agents if available, fall back to mock
-    const displayAgents = backendOnline && Object.keys(liveAgents).length > 0
-      ? Object.values(liveAgents)
-      : mockAgents.map(a => ({ ...a, tasks_completed: a.tasksCompleted }));
-
-    const toggleAgent = async (agentId, currentStatus) => {
-      if (!backendOnline) return;
-      const endpoint = currentStatus === "active" ? "stop" : "start";
-      await apiFetch(`/agents/${agentId}/${endpoint}`, { method: "POST" });
-    };
-
-    const liveCount = displayAgents.filter(a => a.status === "active").length;
-
-    const agentIconBg = { profiling: '#eff6ff', validation: '#f0fdf4', lineage: '#f5f3ff', monitoring: '#fff7ed', governance: '#fff1f2', ingestion: '#f0fdf4' };
-    return (
-      <div className="flex-1 overflow-auto" style={{ background: 'var(--bg)' }}>
-        <div style={{ padding: '22px 24px', maxWidth: '1200px', margin: '0 auto' }}>
-          {/* Header */}
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '20px' }}>
-            <h1 style={{ fontSize: '20px', fontWeight: '700', color: 'var(--text)', display: 'flex', alignItems: 'center', gap: '6px' }}>
-              AI Agents <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: 'var(--orange)', display: 'inline-block', verticalAlign: 'middle' }} />
-            </h1>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              {backendOnline
-                ? <span style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', fontWeight: '600', background: 'rgba(22,163,74,.08)', color: '#16a34a', border: '1px solid rgba(22,163,74,.2)', padding: '5px 12px', borderRadius: '20px' }}><Wifi style={{ width: '13px', height: '13px' }} />Live — {liveCount} of {displayAgents.length} active</span>
-                : <span style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', fontWeight: '600', background: 'rgba(202,138,4,.08)', color: '#ca8a04', border: '1px solid rgba(202,138,4,.2)', padding: '5px 12px', borderRadius: '20px' }}><WifiOff style={{ width: '13px', height: '13px' }} />Demo mode</span>
-              }
-            </div>
-          </div>
-
-          {!backendOnline && (
-            <div style={{ background: 'rgba(232,98,43,.06)', border: '1px solid rgba(232,98,43,.2)', borderRadius: '12px', padding: '14px 18px', display: 'flex', gap: '12px', alignItems: 'flex-start', marginBottom: '16px' }}>
-              <Bot style={{ width: '18px', height: '18px', color: 'var(--orange)', flexShrink: 0, marginTop: '2px' }} />
-              <div>
-                <div style={{ fontSize: '13px', fontWeight: '600', color: 'var(--dark)' }}>Start the backend to activate real agents</div>
-                <div style={{ fontSize: '12px', color: 'var(--muted)', marginTop: '3px' }}>Double-click <strong>Start Backend.command</strong> — agents will connect automatically.</div>
-              </div>
-            </div>
-          )}
-
-          {/* Agent grid */}
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '14px', marginBottom: '16px' }}>
-            {displayAgents.map(agent => {
-              const agentId = agent.id;
-              const status  = agent.status;
-              const isActive = status === "active";
-              const mockMeta = mockAgents.find(m => m.id === agentId || m.name === agent.name) || {};
-              const bg = agentIconBg[agent.type] || '#f8f8f8';
-              return (
-                <div key={agentId} style={{
-                  background: 'var(--card)', borderRadius: '16px', border: '1px solid var(--border)',
-                  borderTop: `3px solid ${isActive ? '#16a34a' : 'var(--border)'}`,
-                  padding: '16px 18px',
-                }}>
-                  <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: '12px' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                      <div style={{ width: '38px', height: '38px', borderRadius: '10px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '18px', background: bg, flexShrink: 0 }}>
-                        {mockMeta.icon || '🤖'}
-                      </div>
-                      <div>
-                        <div style={{ fontSize: '13.5px', fontWeight: '700', color: 'var(--text)' }}>{agent.name}</div>
-                        <AgentTypeBadge type={agent.type} />
-                      </div>
-                    </div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                      <span style={{ fontSize: '11px', fontWeight: '700', padding: '3px 9px', borderRadius: '20px', background: isActive ? 'rgba(22,163,74,.1)' : 'rgba(107,114,128,.08)', color: isActive ? '#16a34a' : '#6b7280' }}>
-                        {isActive ? 'Active' : 'Idle'}
-                      </span>
-                      <button
-                        onClick={() => toggleAgent(agentId, status)}
-                        disabled={!backendOnline}
-                        style={{ padding: '6px', background: 'none', border: 'none', borderRadius: '8px', cursor: backendOnline ? 'pointer' : 'not-allowed', opacity: backendOnline ? 1 : 0.4, color: isActive ? '#16a34a' : 'var(--muted)' }}
-                        title={backendOnline ? (isActive ? "Stop agent" : "Start agent") : "Start backend first"}
-                      >
-                        {isActive ? <Pause style={{ width: '14px', height: '14px' }} /> : <Play style={{ width: '14px', height: '14px' }} />}
-                      </button>
-                    </div>
-                  </div>
-                  <p style={{ fontSize: '12px', color: 'var(--muted)', lineHeight: '1.5', marginBottom: '12px' }}>{mockMeta.description || agent.description || ""}</p>
-                  {/* Stats */}
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '6px', marginBottom: '10px' }}>
-                    {[
-                      { label: "Total", value: (agent.tasks_completed ?? agent.tasksCompleted ?? mockMeta.tasksCompleted ?? 0).toLocaleString() },
-                      { label: "Today",    value: (agent.tasks_today ?? mockMeta.today ?? 0).toString() },
-                      { label: "Avg time",    value: agent.uptime ? agent.uptime.split(".")[0] : (mockMeta.avgRuntime || "—") },
-                    ].map(({ label, value }) => (
-                      <div key={label} style={{ background: 'var(--bg)', borderRadius: '8px', padding: '8px 6px', textAlign: 'center' }}>
-                        <div style={{ fontSize: '14px', fontWeight: '700', color: 'var(--text)' }}>{value}</div>
-                        <div style={{ fontSize: '10.5px', color: 'var(--muted)', marginTop: '2px' }}>{label}</div>
-                      </div>
-                    ))}
-                  </div>
-                  {/* Footer */}
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingTop: '10px', borderTop: '1px solid var(--border)' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
-                      <span style={{ width: '7px', height: '7px', borderRadius: '50%', background: isActive ? '#16a34a' : '#d1d5db', display: 'inline-block' }} />
-                      <span style={{ fontSize: '11.5px', color: 'var(--muted)', textTransform: 'capitalize' }}>{status}</span>
-                    </div>
-                    <span style={{ fontSize: '11px', color: 'var(--muted)' }}>
-                      {agent.last_run ? `Last: ${new Date(agent.last_run).toLocaleTimeString()}` : (agent.lastRun ? `Last: ${agent.lastRun}` : "Never run")}
-                    </span>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-
-          {/* Live log */}
-          <div style={{ background: 'var(--card)', borderRadius: '16px', border: '1px solid var(--border)', overflow: 'hidden' }}>
-            <div style={{ padding: '14px 18px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <span style={{ width: '7px', height: '7px', borderRadius: '50%', background: backendOnline ? '#16a34a' : '#d1d5db', display: 'inline-block' }} />
-                <span style={{ fontSize: '13px', fontWeight: '600', color: 'var(--text)' }}>
-                  {backendOnline ? "Live WebSocket Log" : "Simulated Activity Log"}
-                </span>
-              </div>
-              <span style={{ fontSize: '11.5px', color: 'var(--muted)' }}>{agentLogs.length} entries</span>
-            </div>
-            <div style={{ padding: '14px 18px', height: '220px', overflow: 'auto', fontFamily: 'ui-monospace, monospace', display: 'flex', flexDirection: 'column', gap: '4px' }}>
-              {agentLogs.slice().reverse().map(log => (
-                <div key={log.id} style={{ fontSize: '11.5px', display: 'flex', gap: '10px' }}>
-                  <span style={{ color: 'var(--muted)', flexShrink: 0 }}>{log.timestamp}</span>
-                  <span style={{ flexShrink: 0, fontWeight: '700', color: log.level === "error" ? "#dc2626" : log.level === "warn" ? "#ca8a04" : "#16a34a" }}>
-                    [{(log.level || "info").toUpperCase()}]
-                  </span>
-                  <span style={{ color: 'var(--orange)', flexShrink: 0 }}>[{log.agent}]</span>
-                  <span style={{ color: 'var(--text)' }}>{log.message}</span>
-                </div>
-              ))}
-              {agentLogs.length === 0 && <div style={{ color: 'var(--muted)', fontSize: '12px' }}>Waiting for agent activity…</div>}
-            </div>
-          </div>
-        </div>
-      </div>
-    );
-  };
 
   // ── TASKS TAB ──────────────────────────────────────────────────────────────
   const TasksTab = () => {
     const [newTask, setNewTask] = useState({ title: "", agentId: "data_profiler", tableId: "", priority: "medium" });
-    const [filter, setFilter] = useState("all");
+    const filter = taskFilter;           // lifted to parent — survives remounts
+    const setFilter = setTaskFilter;
     const [submitting, setSubmitting] = useState(false);
 
     // Merge live tasks with mock tasks for demo mode
@@ -3390,7 +3812,7 @@ function DataIQApp({ authUser, handleLogout }) {
       case "catalog":      return <CatalogTab />;
       case "quality":      return <QualityTab />;
       case "lineage":      return <LineageTab />;
-      case "agents":       return <AgentsTab />;
+      case "agents":       return <AgentsTab backendOnline={backendOnline} liveAgents={liveAgents} agentLogs={agentLogs} llmConfigured={llmConfigured} />;
       case "tasks":        return <TasksTab />;
       case "governance":   return <GovernanceTab />;
       case "connections":  return <ConnectionsTab />;

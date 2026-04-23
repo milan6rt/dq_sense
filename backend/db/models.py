@@ -220,6 +220,57 @@ class DQRule(Base):
     )
 
 
+# ── LLM Config ────────────────────────────────────────────────────────────────
+
+class LLMConfig(Base):
+    __tablename__ = "llm_config"
+
+    id              = Column(String(36),  primary_key=True, default=_uuid)
+    provider        = Column(String(50),  nullable=False)   # "anthropic" | "openai"
+    model           = Column(String(100), nullable=False)   # e.g. "claude-sonnet-4-6"
+    encrypted_api_key = Column(Text,      nullable=False)
+    is_active       = Column(Boolean,     default=True)
+    created_at      = Column(DateTime,    default=datetime.utcnow)
+    updated_at      = Column(DateTime,    default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+# ── Agent Insight ─────────────────────────────────────────────────────────────
+
+class AgentInsight(Base):
+    __tablename__ = "agent_insights"
+
+    id              = Column(String(36),  primary_key=True, default=_uuid)
+    agent_id        = Column(String(50),  nullable=False, index=True)   # "data_profiler" etc.
+    connection_id   = Column(String(36),  ForeignKey("connections.id", ondelete="CASCADE"), nullable=True)
+    table_id        = Column(String(36),  ForeignKey("discovered_tables.id", ondelete="CASCADE"), nullable=True)
+    insight_type    = Column(String(50),  nullable=False)   # "profile","quality","lineage","anomaly"
+    summary         = Column(Text,        nullable=False)   # 1-2 sentence headline
+    full_analysis   = Column(Text,        nullable=False)   # full LLM response
+    severity        = Column(String(20),  default="info")   # info | warning | critical
+    insight_meta    = Column(JSON,        default=dict)
+    created_at      = Column(DateTime,    default=datetime.utcnow)
+
+    __table_args__ = (
+        Index("ix_insight_agent", "agent_id"),
+        Index("ix_insight_table", "table_id"),
+    )
+
+
+# ── Agent Schedule ────────────────────────────────────────────────────────────
+
+class AgentSchedule(Base):
+    __tablename__ = "agent_schedules"
+
+    id              = Column(String(36),  primary_key=True, default=_uuid)
+    agent_id        = Column(String(50),  nullable=False, unique=True)
+    cron_expression = Column(String(100), nullable=True)    # null = not scheduled
+    is_active       = Column(Boolean,     default=False)
+    last_run_at     = Column(DateTime,    nullable=True)
+    next_run_at     = Column(DateTime,    nullable=True)
+    created_at      = Column(DateTime,    default=datetime.utcnow)
+    updated_at      = Column(DateTime,    default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
 # ── DQ Rule Run ───────────────────────────────────────────────────────────────
 
 class DQRuleRun(Base):

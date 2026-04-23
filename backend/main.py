@@ -27,6 +27,7 @@ from api.connections import router as connections_router
 from api.auth import router as auth_router
 from api.rules import router as rules_router
 from api.scheduler import router as scheduler_router, restore_scheduled_jobs
+from api.agents_api import router as agents_api_router
 
 # ── Logging ──────────────────────────────────────────────────────────────────
 logging.basicConfig(
@@ -96,8 +97,10 @@ def patch_agents_broadcast():
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Initialise database (creates tables if needed)
-    init_db()
+    loop = asyncio.get_event_loop()
+
+    # Run blocking DB init in thread pool — never block the event loop
+    await loop.run_in_executor(None, init_db)
     logger.info("Database initialised")
 
     # Patch agents + start orchestrator
@@ -107,8 +110,8 @@ async def lifespan(app: FastAPI):
         await orchestrator.start_agent(agent_id)
     logger.info("All agents started")
 
-    # Restore scheduled scan jobs from DB
-    restore_scheduled_jobs()
+    # Restore scheduled scan jobs in thread pool (APScheduler + DB are sync)
+    await loop.run_in_executor(None, restore_scheduled_jobs)
     logger.info("Scheduled jobs restored")
 
     yield
@@ -128,7 +131,8 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000", "http://127.0.0.1:3000", "*"],
+    allow_origins=["http://localhost:3000", "http://127.0.0.1:3000",
+                   "http://localhost:5173", "http://127.0.0.1:5173"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -139,6 +143,7 @@ app.include_router(connections_router)
 app.include_router(auth_router)
 app.include_router(rules_router)
 app.include_router(scheduler_router)
+app.include_router(agents_api_router)
 
 
 # ── Pydantic models ───────────────────────────────────────────────────────────

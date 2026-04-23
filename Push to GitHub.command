@@ -9,7 +9,7 @@ echo ""
 REMOTE_URL="https://github.com/milan6rt/dq_sense.git"
 
 # Clean up any stale git lock files
-rm -f .git/index.lock 2>/dev/null
+rm -f .git/index.lock .git/HEAD.lock .git/MERGE_HEAD.lock 2>/dev/null
 
 # Init if not already a repo
 if [ ! -d ".git" ]; then
@@ -49,11 +49,14 @@ git add \
     backend/main.py \
     backend/requirements.txt \
     backend/agents.py \
+    backend/llm_provider.py \
     backend/api/ \
     backend/connectors/ \
     backend/db/ \
     backend/services/ \
-    "backend/.env.example" 2>/dev/null
+    "backend/.env.example" \
+    checker.py \
+    "Run Checker.command" 2>/dev/null
 
 git status --short
 echo ""
@@ -64,18 +67,27 @@ if git diff --cached --quiet; then
 else
     echo "💾 Committing..."
     git commit -m "$(cat <<'EOF'
-Fix DQ Rules: edit flow, column dropdown, columns API endpoint
+Add real LLM-powered agents, Settings tab, and agent scheduling
 
-- RulesTab: full edit-rule flow with pre-populated form (BLANK_FORM
-  constant, editingId state, openEdit/openCreate/closeForm helpers,
-  PUT /api/rules/:id for updates vs POST for create)
-- RulesTab: column field becomes a dropdown when table is selected;
-  fetches /api/connections/:conn/tables/:table/columns on table change;
-  shows column count badge e.g. "Column (18 available)"
-- Edit pencil button added to each rule card
-- connections.py: added GET /api/connections/{conn}/tables/{table}/columns
-  endpoint; fixed AttributeError (model field is distinct_count, not
-  unique_count) that caused uvicorn worker to drop the connection
+Backend:
+- llm_provider.py: Anthropic (Claude) + OpenAI abstraction layer with
+  test endpoint, model registry, and Fernet-encrypted API key storage
+- agents.py: all 4 agents now make real LLM calls — profiler interprets
+  column stats, validator synthesizes DQ rule results, lineage tracker
+  infers data flow from schema, anomaly detector compares profiling runs
+- db/models.py: added LLMConfig, AgentInsight, AgentSchedule ORM models
+- api/agents_api.py: new router — GET/POST agent controls (start/stop/run),
+  cron schedule CRUD with APScheduler integration, insights feed,
+  GET/PUT /api/llm/config, POST /api/llm/test, GET /api/llm/models
+- main.py: registered agents_api_router
+
+Frontend (App.jsx):
+- Settings tab: LLM provider selector (Claude/OpenAI), model dropdown,
+  API key field, Save + Test Connection buttons
+- AI Agents tab: fully rebuilt — Start/Stop, Run Now modal with
+  connection/table targeting, cron schedule editor with presets,
+  LLM Insights feed (expandable full analysis), severity badges
+- New Settings nav item
 EOF
 )"
     echo ""

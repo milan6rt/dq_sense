@@ -268,9 +268,17 @@ def restore_scheduled_jobs():
     db = SessionLocal()
     try:
         scans = db.query(ScheduledScan).filter(ScheduledScan.is_active == True).all()
+        ok, failed = 0, 0
         for scan in scans:
-            _register_job(scan)
-        logger.info(f"Restored {len(scans)} scheduled scan job(s)")
+            try:
+                _register_job(scan)
+                ok += 1
+            except Exception as e:
+                failed += 1
+                logger.error(f"Could not restore scheduled job '{scan.name}' (id={scan.id}): {e}")
+        logger.info(f"Scheduled jobs restored — {ok} ok, {failed} failed")
+    except Exception as e:
+        logger.error(f"restore_scheduled_jobs failed entirely: {e}")
     finally:
         db.close()
 
